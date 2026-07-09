@@ -1,0 +1,9 @@
+.env
+.pytest_cache
+__pycache__/
+*.pyc
+venv/
+.claude/
+CLAUDE.md
+get_gh_files example
+readme

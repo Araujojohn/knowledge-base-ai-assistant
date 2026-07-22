@@ -13,6 +13,8 @@ import json
 load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+STEP_SEP = "\n<<<MSG_BREAK>>>\n"
+
 def check_tool_call(state: AgentState):
     ultima_mensagem = state["messages"][-1]
     if ultima_mensagem.tool_calls != []:
@@ -45,20 +47,20 @@ def send_message_to_ai(message: str):
       if msg.type == "ai":
        if isinstance(msg.content, str):
         print(msg.content)
-        yield f"{msg.content}\n"
+        yield f"{msg.content}{STEP_SEP}"
        else:
         for item in msg.content:
          if item["type"] == "text":
           print(item["text"])
-          yield f"{item["text"]}\n"
+          yield f"{item["text"]}{STEP_SEP}"
          elif item["type"] == "thinking":
           print("Pensando...\n")
-          yield "Pensando...\n"
+          yield f"Pensando...{STEP_SEP}"
          elif item["type"] == "tool_use":
           print(f"[{item["name"]}]: [{item["input"]["path"]}]\n")
-          yield f"[{item["name"]}]: [{item["input"]["path"]}]\n"
+          yield f"[{item["name"]}]: [{item["input"]["path"]}]{STEP_SEP}"
   except GraphRecursionError as erro:
    print("Antingi o Limite de tentativas, quer tentar por um outro caminho?\n")
-   yield "Antingi o Limite de tentativas, quer tentar por um outro caminho?\n"
+   yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?{STEP_SEP}"
  return StreamingResponse(unpack_response())
 

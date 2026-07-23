@@ -12,9 +12,13 @@ async def send_to_whatsapp(message: str, number: int):
 
  url = "https://www.avisaapi.com.br/api/actions/sendMessage"
 
+
+ formated_response = message.replace("**", "*")
+
+
  payload = json.dumps({
    "number": f"{number}",
-   "message": f"{message}"
+   "message": f"{formated_response}"
  })
 
  headers = {
@@ -24,5 +28,5 @@ async def send_to_whatsapp(message: str, number: int):
  
  response =  await client.post(url, headers=headers, data=payload)
  response.raise_for_status()
- 
+
  return response

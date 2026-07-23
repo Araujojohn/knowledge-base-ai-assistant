@@ -1,6 +1,5 @@
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from fastapi.responses import StreamingResponse
 import langgraph.errors
 from dotenv import load_dotenv
 import os
@@ -13,7 +12,6 @@ import json
 load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-STEP_SEP = "\n<<<MSG_BREAK>>>\n"
 
 def check_tool_call(state: AgentState):
     ultima_mensagem = state["messages"][-1]
@@ -33,12 +31,10 @@ builder.add_edge("tools", "AI_Agent")
 graph = builder.compile()
 
 ##Send Message to AI, and Unpack/Format Reponse in a clear, stream (thinking, tool_use or text repsonse)
-def send_message_to_ai(message: str):
- async def unpack_response():
+async def send_message_to_ai(message: str):
   try:
    async for event in graph.astream(
-    input={"messages": [message]
-    },
+    input={"messages": [message]},
     stream_mode="updates",
     config={"recursion_limit": 15}
     ):
@@ -47,20 +43,19 @@ def send_message_to_ai(message: str):
       if msg.type == "ai":
        if isinstance(msg.content, str):
         print(msg.content)
-        yield f"{msg.content}{STEP_SEP}"
+        yield f"{msg.content}"
        else:
         for item in msg.content:
          if item["type"] == "text":
           print(item["text"])
-          yield f"{item["text"]}{STEP_SEP}"
+          yield f"{item["text"]}"
          elif item["type"] == "thinking":
           print("Pensando...\n")
-          yield f"Pensando...{STEP_SEP}"
+          yield f"Pensando..."
          elif item["type"] == "tool_use":
           print(f"[{item["name"]}]: [{item["input"]["path"]}]\n")
-          yield f"[{item["name"]}]: [{item["input"]["path"]}]{STEP_SEP}"
+          yield f"[{item["name"]}]: [{item["input"]["path"]}]"
   except GraphRecursionError as erro:
    print("Antingi o Limite de tentativas, quer tentar por um outro caminho?\n")
-   yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?{STEP_SEP}"
- return StreamingResponse(unpack_response())
-
+   yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"
+ 

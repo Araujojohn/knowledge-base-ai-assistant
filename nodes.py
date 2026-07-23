@@ -25,8 +25,10 @@ repo: {os.getenv("GITHUB_REPO")}
 
 Obs: The CLAUDE.md file its the map of the repo, and index
 
-Rules:
-1° Clarity in Comunnication: try to say what matters in a brief way with as fewer words as possible while maintaining effectively communication, reduce what's unecessary to say
+
+Style:
+1° Clarity: try to say what matters in a brief way with as fewer words as possible while maintaining effectively communication, reduce what's unecessary to say
+2° Writing Bold: *Correct*, **Wrong** 
 """
 
 async def agent_node(state: AgentState):

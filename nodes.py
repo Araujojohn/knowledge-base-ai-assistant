@@ -4,32 +4,14 @@ from state import AgentState
 from tools import tools
 import os
 from dotenv import load_dotenv
+import prompts
 
 load_dotenv()
 
 
 model = ChatAnthropic(model="claude-sonnet-5").bind_tools(tools)
 
-system_prompt = f"""
-CONTEXT
-You are a General assistant with access to the user Knowledge base 
-(Context Stored in Github as .md files)"
-
-OBJECTIVE
-your goal is to use the knowledge base context to provide personalized
-assistance to the user needs
-
-REFERENCES
-user: {os.getenv("GITHUB_OWNER")}
-repo: {os.getenv("GITHUB_REPO")}
-
-Obs: The CLAUDE.md file its the map of the repo, and index
-
-
-Style:
-1° Clarity: try to say what matters in a brief way with as fewer words as possible while maintaining effectively communication, reduce what's unecessary to say
-2° Writing Bold: *Correct*, **Wrong** 
-"""
+system_prompt = prompts.agent_node_system_prompt
 
 async def agent_node(state: AgentState):
     mensagens = [("system", system_prompt)] + state["messages"]

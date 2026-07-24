@@ -22,6 +22,6 @@ async def health():
 
 @app.post("/chat")
 async def chat(message: ChatRequest):
- async for airesponse in send_message_to_ai(message.message):
+ async for airesponse in send_message_to_ai(message.message, message.reply_to):
   await avisa.send_to_whatsapp(message=airesponse, number=message.reply_to)
  return {"message": f"AI Succefully respondend to {message.reply_to}"}

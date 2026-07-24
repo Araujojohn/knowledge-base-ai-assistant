@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-import langgraph.errors
+from langgraph.errors import GraphRecursionError
+from langgraph.checkpoint.memory import InMemorySaver
 from dotenv import load_dotenv
 import os
 from state import AgentState
@@ -28,15 +29,15 @@ builder.add_node("AI_Agent", agent_node)
 builder.add_node("tools", ToolNode(tools, handle_tool_errors=True))
 builder.add_conditional_edges("AI_Agent", check_tool_call)
 builder.add_edge("tools", "AI_Agent")
-graph = builder.compile()
+graph = builder.compile(checkpointer=InMemorySaver())
 
 ##Send Message to AI, and Unpack/Format Reponse in a clear, stream (thinking, tool_use or text repsonse)
-async def send_message_to_ai(message: str):
+async def send_message_to_ai(message: str, thread_id):
   try:
    async for event in graph.astream(
     input={"messages": [message]},
     stream_mode="updates",
-    config={"recursion_limit": 15}
+    config={"recursion_limit": 30, "configurable": {"thread_id": f"{thread_id}"} }
     ):
     for aimessage in event.values():
      for msg in aimessage["messages"]:
@@ -53,8 +54,8 @@ async def send_message_to_ai(message: str):
           print("Pensando...\n")
           yield f"Pensando..."
          elif item["type"] == "tool_use":
-          print(f"{item["name"]} [{item["input"]["path"]}]\n")
-          yield f"{item["name"]} [{item["input"]["path"]}]"
+          print(f"{item["name"]} {item["input"]["path"]}\n")
+          yield f"{item["name"]} {item["input"]["path"]}"
   except GraphRecursionError as erro:
    print("Antingi o Limite de tentativas, quer tentar por um outro caminho?\n")
    yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"

@@ -14,7 +14,7 @@ model = ChatAnthropic(model="claude-sonnet-5").bind_tools(tools)
 system_prompt = prompts.agent_node_system_prompt
 
 async def agent_node(state: AgentState):
-    mensagens = [("system", system_prompt)] + state["messages"]
+    mensagens = [("system", system_prompt)] + state["messages"][-30:]
     try:
      response = await model.ainvoke(mensagens)
     except Exception as error:

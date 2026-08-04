@@ -7,9 +7,10 @@ import psycopg
 from semantic_text_splitter import MarkdownSplitter
 from openai import OpenAI
 
+
 load_dotenv()
 
-#Definir parametros da conexão com o banco de dados (Postgress)
+
 conn = psycopg.connect(
     host = os.getenv("DB_HOST"),
     dbname = os.getenv("DB_NAME"),
@@ -57,15 +58,29 @@ def db_init(conn):
 	     PRIMARY KEY("id"),
        UNIQUE (file_id, chunk_index)
        );
-
        """
     )
 
+    cur.execute(
+       """
+       SELECT *
+       FROM knowledge_base_ai.files
+       """
+    )
+
+
+    data = cur.fetchall()
     conn.commit()
+    if data == []:
+     initial_sync = True
+    else:
+     initial_sync = False
+
+    return initial_sync
 
 
 ## Puxar Arquivos (Sync Inicial) e armazenar commit atual
-def initial_github_pull(conn):
+def initial_github_pull():
 
     url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/main?recursive=1"
 
@@ -102,14 +117,84 @@ def initial_github_pull(conn):
 
         files[item["path"]] = {"sha": item["sha"], "url": item["url"], "content": content}
 
+    latest_commit_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/commits/main"
 
-    return files
+    headers = {
+      "Authorization": f"Bearer {GITHUB_TOKEN}",
+      "Accept": "application/vnd.github.json"
+    }
+
+    params={"ref": "main"}
+
+    response = requests.get(
+     url = latest_commit_endpoint_url,
+     headers = headers,
+     params = params
+    )
+    response.raise_for_status()
+    sha_novo = response.json()["sha"]
+
+    return files, sha_novo
 
 
-def pull_github_diff():
- latest_commit_endpoint = f"repos/{owner}/{repo}/commits/main"
- diff_endpoint = f"repos/{owner}/{repo}/compare/{sha_antigo}{sha_novo}"
- return files
+def pull_github_diff(conn):
+  files = {}
+  cur = conn.cursor()
+
+  cur.execute(
+   """
+   SELECT last_sync_sha
+   FROM knowledge_base_ai.pipeline
+   ORDER BY id DESC
+   LIMIT 1
+   """
+   )
+  last_sync_sha = cur.fetchone()[0]
+
+  latest_commit_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/commits/main"
+
+  headers = {
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.json"
+  }
+
+  params={"ref": "main"}
+
+  response = requests.get(
+   url = latest_commit_endpoint_url,
+   headers = headers,
+   params = params
+  )
+  response.raise_for_status()
+  sha_novo = response.json()["sha"]
+
+  diff_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{last_sync_sha}...{sha_novo}"
+
+  response = requests.get(
+   url = diff_endpoint_url,
+   headers = headers,
+   params = params
+  )
+  response.raise_for_status()
+
+  diff = response.json()["files"]
+
+  for diff_files in diff:
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{diff_files["sha"]}"
+    response = requests.get(
+      url = url,
+      headers = headers,
+      params = params
+     )
+
+    response.raise_for_status()
+    encoded_content = response.json()
+    content = base64.b64decode(encoded_content["content"]).decode("utf-8")
+    files[diff_files["filename"]] = {"sha": diff_files["sha"], "url": diff_files["blob_url"], "content": content}
+
+  conn.commit()
+
+  return files, sha_novo
 
 
 def chunk(files):
@@ -139,9 +224,6 @@ def chunk(files):
  return files
 
 
-
-#sync_to_postgres(conn, files)
-
 def generate_embeddings(files):
   client = OpenAI(api_key=openai_api_key)
 
@@ -161,7 +243,6 @@ def generate_embeddings(files):
     files[path]["chunks_embeddings"] = chunks_embeddings
 
   return files
-
 
 
 def sync_to_postgres(files, conn):
@@ -221,8 +302,31 @@ def sync_to_postgres(files, conn):
   conn.commit()
 
 
-db_init(conn)
-files = initial_github_pull(conn)
-chunk(files)
-generate_embeddings(files)
-sync_to_postgres(files, conn)
+def update_last_sync_sha(conn, sha_novo):
+  cur = conn.cursor()
+
+  last_sync_sha = (sha_novo,)
+
+  cur.execute(
+    """
+    INSERT INTO knowledge_base_ai.pipeline (last_sync_sha, last_sync_date)
+    VALUES (%s, now())
+    """,
+    last_sync_sha
+  )
+
+  conn.commit()
+
+
+def rag_pipeline():
+ initial_sync = db_init(conn)
+ if initial_sync == True:
+   files, sha_novo = initial_github_pull()
+ else:
+   files, sha_novo = pull_github_diff(conn)
+ chunk(files)
+ generate_embeddings(files)
+ sync_to_postgres(files, conn)
+ update_last_sync_sha(conn, sha_novo)
+
+rag_pipeline()

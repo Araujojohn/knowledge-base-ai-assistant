@@ -178,23 +178,27 @@ def pull_github_diff(conn):
   response.raise_for_status()
 
   diff = response.json()["files"]
+  deleted_files = []
 
   for diff_files in diff:
-    url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{diff_files["sha"]}"
-    response = requests.get(
-      url = url,
-      headers = headers,
-      params = params
-     )
+    if diff_files["status"] == "removed":
+     deleted_files.append(diff_files["filename"])
+    else:
+     url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{diff_files["sha"]}"
+     response = requests.get(
+       url = url,
+       headers = headers,
+       params = params
+      )
 
-    response.raise_for_status()
-    encoded_content = response.json()
-    content = base64.b64decode(encoded_content["content"]).decode("utf-8")
-    files[diff_files["filename"]] = {"sha": diff_files["sha"], "url": diff_files["blob_url"], "content": content}
+     response.raise_for_status()
+     encoded_content = response.json()
+     content = base64.b64decode(encoded_content["content"]).decode("utf-8")
+     files[diff_files["filename"]] = {"sha": diff_files["sha"], "url": diff_files["blob_url"], "content": content}
 
   conn.commit()
 
-  return files, sha_novo
+  return files, sha_novo, deleted_files
 
 
 def chunk(files):
@@ -245,10 +249,12 @@ def generate_embeddings(files):
   return files
 
 
-def sync_to_postgres(files, conn):
+def sync_to_postgres(files, conn, deleted_files=None):
   cur = conn.cursor()
 
   files_table_data = []
+  if deleted_files == None:
+    deleted_files = []
 
   for path, file_data in files.items():
    files_table_data.append((path, file_data["sha"]))
@@ -299,6 +305,14 @@ def sync_to_postgres(files, conn):
      chunks_table_data
     )
 
+  cur.execute(
+     """
+     DELETE FROM knowledge_base_ai.files
+     WHERE path = ANY(%s)
+     """,
+     (list(deleted_files),)
+     )
+
   conn.commit()
 
 
@@ -322,11 +336,12 @@ def rag_pipeline():
  initial_sync = db_init(conn)
  if initial_sync == True:
    files, sha_novo = initial_github_pull()
+   deleted_files = []
  else:
-   files, sha_novo = pull_github_diff(conn)
+   files, sha_novo, deleted_files = pull_github_diff(conn)
  chunk(files)
  generate_embeddings(files)
- sync_to_postgres(files, conn)
+ sync_to_postgres(files, conn, deleted_files)
  update_last_sync_sha(conn, sha_novo)
 
 rag_pipeline()

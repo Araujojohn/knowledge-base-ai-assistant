@@ -54,8 +54,8 @@ async def send_message_to_ai(message: str, thread_id):
           print("Pensando...\n")
           yield f"Pensando..."
          elif item["type"] == "tool_use":
-          print(f"{item["name"]} {item["input"]["path"]}\n")
-          yield f"{item["name"]} {item["input"]["path"]}"
+          print(f"{item["name"]} {item["input"]}\n")
+          yield f"{item["name"]} {item["input"]}"
   except GraphRecursionError as erro:
    print("Antingi o Limite de tentativas, quer tentar por um outro caminho?\n")
    yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"

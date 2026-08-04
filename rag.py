@@ -103,7 +103,7 @@ def initial_github_pull():
     files = {}
 
     for item in data["tree"]:
-     if item["type"] == "blob" and item["path"].endswith(".md") and item["path"] == "perfil/perfil.md":
+     if item["type"] == "blob" and item["path"].endswith(".md"):
 
         response = requests.get(
          url = item["url"],
@@ -223,8 +223,10 @@ def chunk(files):
        pass
      else:
       transformed_chunks.append({"header": last_seen_header,"content": chunk})
-
-   files[path]["chunks"] = transformed_chunks
+   if transformed_chunks == []:
+    pass
+   else:
+    files[path]["chunks"] = transformed_chunks
  return files
 
 
@@ -232,19 +234,20 @@ def generate_embeddings(files):
   client = OpenAI(api_key=openai_api_key)
 
   for path, file_data in files.items():
-    chunks_embeddings = []
-    textos = []
-    for c in file_data["chunks"]:
-      textos.append(f"{c['header']}\n{c['content']}")
+    if file_data.get("chunks"):
+     chunks_embeddings = []
+     textos = []
+     for c in file_data["chunks"]:
+       textos.append(f"{c['header']}\n{c['content']}")
 
-    response = client.embeddings.create(
-    model="text-embedding-3-small",
-    input=textos
-    )
-    embeddings = response.data
-    for embedding_obj in embeddings:
-     chunks_embeddings.append(embedding_obj.embedding)
-    files[path]["chunks_embeddings"] = chunks_embeddings
+     response = client.embeddings.create(
+     model="text-embedding-3-small",
+     input=textos
+     )
+     embeddings = response.data
+     for embedding_obj in embeddings:
+      chunks_embeddings.append(embedding_obj.embedding)
+     files[path]["chunks_embeddings"] = chunks_embeddings
 
   return files
 
@@ -287,7 +290,7 @@ def sync_to_postgres(files, conn, deleted_files=None):
 
   chunks_table_data = []
   for path, file_data in files.items():
-   for indice, chunk in enumerate(file_data["chunks"]):
+   for indice, chunk in enumerate(file_data.get("chunks", [])):
     chunks_table_data.append((path_to_id[path], chunk["header"], chunk["content"], file_data["chunks_embeddings"][indice], indice))
 
 

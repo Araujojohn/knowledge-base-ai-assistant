@@ -11,13 +11,6 @@ from openai import OpenAI
 load_dotenv()
 
 
-conn = psycopg.connect(
-    host = os.getenv("DB_HOST"),
-    dbname = os.getenv("DB_NAME"),
-    user = os.getenv("DB_USER"),
-    password = os.getenv("DB_PASSWORD"),
-    port = os.getenv("DB_PORT")
-)
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 owner = os.getenv("GITHUB_OWNER")
@@ -336,15 +329,31 @@ def update_last_sync_sha(conn, sha_novo):
 
 
 def rag_pipeline():
- initial_sync = db_init(conn)
- if initial_sync == True:
-   files, sha_novo = initial_github_pull()
-   deleted_files = []
- else:
-   files, sha_novo, deleted_files = pull_github_diff(conn)
- chunk(files)
- generate_embeddings(files)
- sync_to_postgres(files, conn, deleted_files)
- update_last_sync_sha(conn, sha_novo)
+ conn = None
+ try:
+   conn = psycopg.connect(
+    host = os.getenv("DB_HOST"),
+    dbname = os.getenv("DB_NAME"),
+    user = os.getenv("DB_USER"),
+    password = os.getenv("DB_PASSWORD"),
+    port = os.getenv("DB_PORT")
+   )
+   initial_sync = db_init(conn)
+   if initial_sync == True:
+     files, sha_novo = initial_github_pull()
+     deleted_files = []
+   else:
+     files, sha_novo, deleted_files = pull_github_diff(conn)
+   chunk(files)
+   generate_embeddings(files)
+   sync_to_postgres(files, conn, deleted_files)
+   update_last_sync_sha(conn, sha_novo)
+   response = "Sucesso no Sync"
+ except Exception as error:
+   response = f"Erro ao rodar o sync:{error}"
+ finally:
+   if conn is not None:
+    conn.close()
+ return response
 
-rag_pipeline()
+

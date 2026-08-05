@@ -83,8 +83,8 @@ jobs:
           CAPTAIN_DEFINITION=$(jq -n --arg image "$IMAGE" '{schemaVersion: 2, imageName: $image} | tostring')
           BODY=$(jq -n --argjson def "$CAPTAIN_DEFINITION" --arg sha "${{ github.sha }}" '{captainDefinitionContent: $def, gitHash: $sha}')
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
-            "https://captain.artace.app/api/v2/user/apps/appData/knowledge-base-ai-assistant" \
-            -H "x-captain-auth: $CAPROVER_TOKEN" \
+            "https://captain.artace.app/api/v2/user/apps/appData/knowledge-base-ai-assistant?detached=1" \
+            -H "x-captain-app-token: $CAPROVER_TOKEN" \
             -H "x-namespace: captain" \
             -H "Content-Type: application/json" \
             -d "$BODY")
@@ -95,7 +95,7 @@ jobs:
             echo "Deploy request failed with HTTP $HTTP_CODE"
             exit 1
           fi
-          if ! echo "$RESPONSE_BODY" | jq -e '.status == 100' > /dev/null; then
+          if ! echo "$RESPONSE_BODY" | jq -e '.status == 100 or .status == 101' > /dev/null; then
             echo "CapRover did not report a successful deploy"
             exit 1
           fi

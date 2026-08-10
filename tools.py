@@ -169,6 +169,7 @@ async def search(
   """
   Busca Hibrida, use quando quiser encontrar alguma informação
   buscando rapidamente em todos os textos e arquivos (Busca Semantica via embeddings + keywords via fts + reranking)
+  DICA: Enriqueça a query, tanto sematicamente como com keywords
   """
   conn = get_db_connection()
   cur = conn.cursor()

@@ -17,9 +17,9 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 def check_tool_call(state: AgentState):
     ultima_mensagem = state["messages"][-1]
     if ultima_mensagem.tool_calls != []:
-     resultado = "tools"
+       resultado = "tools"
     else:
-     resultado = END
+       resultado = END
     return resultado
 
 #Builds the graph map and compiles it

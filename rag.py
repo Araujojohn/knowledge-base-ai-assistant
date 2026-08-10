@@ -19,12 +19,18 @@ repo = os.getenv("GITHUB_REPO")
 openai_api_key = os.getenv("OPENAI_API_TOKEN")
 
 #  Conexão com o Banco de dados & checagem/criação das tabelas)
-def db_init(conn):
+def db_init(conn) -> bool: 
+    """
+    Connects to the Database, checks tables and file data
+    creates schema, vector extension, tables if its the initial synnc
+    """
 
     cur = conn.cursor()
 
     cur.execute(
        """
+       CREATE SCHEMA IF NOT EXISTS knowledge_base_ai;
+
        CREATE EXTENSION IF NOT EXISTS vector SCHEMA knowledge_base_ai;
 
        CREATE TABLE IF NOT EXISTS knowledge_base_ai.pipeline (
@@ -329,8 +335,11 @@ def update_last_sync_sha(conn, sha_novo):
 
 
 def rag_pipeline():
- conn = None
- try:
+  """
+  Orchestrates the complete Rag pipeline, Retrieval -> Chunking -> Embedding -> Database 
+  """
+  conn = None
+  try:
    conn = psycopg.connect(
     host = os.getenv("DB_HOST"),
     dbname = os.getenv("DB_NAME"),
@@ -349,11 +358,11 @@ def rag_pipeline():
    sync_to_postgres(files, conn, deleted_files)
    update_last_sync_sha(conn, sha_novo)
    response = "Sucesso no Sync"
- except Exception as error:
+  except Exception as error:
    response = f"Erro ao rodar o sync:{error}"
- finally:
+  finally:
    if conn is not None:
     conn.close()
- return response
+  return response
 
 

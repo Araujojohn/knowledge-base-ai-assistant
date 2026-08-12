@@ -163,7 +163,7 @@ async def write(
 
 
 @tool
-async def search(
+def search(
   query: str,
   ):
   """

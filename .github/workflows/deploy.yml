@@ -22,7 +22,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github-action-ci-cd
+
       - name: Run tests
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          TESTS_DB_NAME: ${{ secrets.TESTS_DB_NAME }}
+          TESTS_DB_USER: ${{ secrets.TESTS_DB_USER }}
+          TESTS_DB_PASSWORD: ${{ secrets.TESTS_DB_PASSWORD }}
+          OPENAI_API_TOKEN: ${{ secrets.OPENAI_API_TOKEN }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
         run: python -m pytest tests/ -v
 
   build:

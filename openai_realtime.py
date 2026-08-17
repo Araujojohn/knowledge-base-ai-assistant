@@ -22,7 +22,9 @@ async def  create_openai_realtime_session() -> str:
         "session": {
             "type": "realtime",
             "model": "gpt-realtime",
-            "voice": "cedar",
+            "audio": {
+                "output": {"voice": "cedar"}
+            },
             "instructions": openai_realtimeapi_prompt,
             "tools": [
                 {

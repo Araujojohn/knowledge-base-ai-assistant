@@ -186,6 +186,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    --speak-level: 0; /* 0..1, driven by JS from the remote audio track while speaking */
   }
   .neural-orb { position: relative; width: 46px; height: 46px; }
   .neural-core {
@@ -194,6 +195,7 @@
     background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
     box-shadow: 0 0 12px var(--accent-glow), 0 0 22px rgba(79, 142, 247, 0.25);
     animation: neuralPulse 5s ease-in-out infinite;
+    transition: transform 0.1s ease-out; /* smooths the per-frame --speak-level updates */
   }
   .neural-ring {
     position: absolute; inset: 2px; border-radius: 50%;
@@ -262,6 +264,23 @@
   .orb-field.thinking .neural-ring-2 { display: block; animation-duration: 7s; }
   .orb-field.thinking .neural-dot    { display: block; animation-duration: 3.5s; }
   .orb-field.thinking .neural-wave   { display: block; animation-duration: 5s; }
+
+  /* Speaking — the core stops running its own rhythm and tracks the actual
+     remote-audio volume instead (--speak-level, updated every frame from a
+     Web Audio AnalyserNode tapping the WebRTC track). Rings/dots/waves keep
+     a lively canned loop underneath; only the core is truly voice-reactive,
+     so it doesn't look like everything is randomly twitching at once. */
+  .orb-field.speaking .neural-core {
+    animation: none;
+    transform: translate(-50%, -50%) scale(calc(1 + var(--speak-level) * 0.6));
+    box-shadow:
+      0 0 calc(12px + var(--speak-level) * 14px) var(--accent-glow),
+      0 0 calc(22px + var(--speak-level) * 20px) rgba(79, 142, 247, 0.3);
+  }
+  .orb-field.speaking .neural-ring   { animation-duration: 7s; }
+  .orb-field.speaking .neural-ring-2 { display: block; animation-duration: 10s; }
+  .orb-field.speaking .neural-dot    { display: block; animation-duration: 5s; }
+  .orb-field.speaking .neural-wave   { display: block; animation-duration: 8s; }
 
   header {
     display: flex;

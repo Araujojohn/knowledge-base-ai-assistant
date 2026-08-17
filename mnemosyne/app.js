@@ -23,15 +23,60 @@ let micStream = null;
 let micMuted = false;
 let sessionId = null;
 let connected = false;
+let toolCallInFlight = false;
 
 function setStatus(text, state) {
   statusText.textContent = text;
   statusDot.className = "dot" + (state ? ` ${state}` : "");
 }
 
-// state: "" (idle) | "connecting" | "active" (connected, listening) | "thinking" (tool call in flight)
+// state: "" (idle) | "connecting" | "active" (connected, listening)
+//      | "thinking" (tool call in flight) | "speaking" (AI voice audio playing)
 function setOrbState(state) {
   aiOrb.className = "orb-field" + (state ? ` ${state}` : "");
+}
+
+// Drives the orb's --speak-level from the real remote-audio volume (Web
+// Audio AnalyserNode tapping the WebRTC track) while the AI is speaking —
+// see startSpeakingAnalysis()/stopSpeakingAnalysis() below.
+let audioCtx = null;
+let analyser = null;
+let levelData = null;
+let speakingRaf = null;
+
+function setupAudioAnalyser(stream) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.6;
+  source.connect(analyser); // not connected to destination — analysis only, no double playback
+  levelData = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function updateSpeakingLevel() {
+  if (!analyser || !aiOrb.classList.contains("speaking")) {
+    speakingRaf = null;
+    return;
+  }
+  analyser.getByteFrequencyData(levelData);
+  let sum = 0;
+  for (let i = 0; i < levelData.length; i++) sum += levelData[i];
+  aiOrb.style.setProperty("--speak-level", (sum / levelData.length / 255).toFixed(3));
+  speakingRaf = requestAnimationFrame(updateSpeakingLevel);
+}
+
+function startSpeakingAnalysis() {
+  setOrbState("speaking");
+  if (audioCtx?.state === "suspended") audioCtx.resume();
+  if (analyser && !speakingRaf) speakingRaf = requestAnimationFrame(updateSpeakingLevel);
+}
+
+function stopSpeakingAnalysis() {
+  if (speakingRaf) cancelAnimationFrame(speakingRaf);
+  speakingRaf = null;
+  aiOrb.style.setProperty("--speak-level", "0");
+  setOrbState(toolCallInFlight ? "thinking" : (connected ? "active" : ""));
 }
 
 // Transcript reads as floating captions, not a chat log: each line fades in,
@@ -114,6 +159,7 @@ async function handleFunctionCall(name, callId, argsJson) {
     request = argsJson;
   }
 
+  toolCallInFlight = true;
   setOrbState("thinking");
   scheduleFade(addLine("tool", `Looking up: ${request}`), "tool");
   const liveLine = addLine("assistant", "");
@@ -127,6 +173,7 @@ async function handleFunctionCall(name, callId, argsJson) {
     liveLine.textContent = output;
   }
   scheduleFade(liveLine, "assistant");
+  toolCallInFlight = false;
   setOrbState(connected ? "active" : "");
 
   if (!dc || dc.readyState !== "open") return;
@@ -151,7 +198,20 @@ function handleServerEvent(raw) {
   }
 
   switch (event.type) {
+    // Fired when the model's spoken audio actually starts/stops playing —
+    // distinct from response.done, which marks generation finishing, not
+    // playback (the audio track can still be draining its buffer after).
+    case "output_audio_buffer.started":
+      startSpeakingAnalysis();
+      break;
+    case "output_audio_buffer.stopped":
+    case "output_audio_buffer.cleared": // cleared on interruption/barge-in
+      stopSpeakingAnalysis();
+      break;
     case "response.done": {
+      // Safety net: if the buffer events above never fired for some reason,
+      // don't leave the orb stuck showing "speaking" forever.
+      if (aiOrb.classList.contains("speaking")) stopSpeakingAnalysis();
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
@@ -180,6 +240,7 @@ async function connect() {
     pc = new RTCPeerConnection();
     pc.ontrack = (e) => {
       remoteAudio.srcObject = e.streams[0];
+      setupAudioAnalyser(e.streams[0]);
     };
 
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -231,13 +292,20 @@ async function connect() {
 
 function cleanup() {
   connected = false;
+  toolCallInFlight = false;
   if (dc) dc.close();
   if (pc) pc.close();
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (speakingRaf) cancelAnimationFrame(speakingRaf);
+  if (audioCtx) audioCtx.close();
   dc = null;
   pc = null;
   micStream = null;
   micMuted = false;
+  audioCtx = null;
+  analyser = null;
+  levelData = null;
+  speakingRaf = null;
   micBtn.textContent = "Mute";
   micBtn.classList.remove("muted");
   micBtn.classList.remove("listening");

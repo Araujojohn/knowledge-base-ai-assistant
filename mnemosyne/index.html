@@ -4,20 +4,45 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mnemosyne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Design tokens shared with Ads Analyst Agent / Meta Ads Bulk Upload —
+     see Ads Analyst Agent/docs/design/visual-identity.md (source of truth). */
   :root {
-    --bg: #0b0d12;
-    --panel: #12151c;
-    --panel-border: #232838;
-    --text: #e7e9ee;
-    --muted: #8a90a2;
-    --accent: #7c9eff;
-    --accent-dim: #3a4b8a;
-    --danger: #ff6b6b;
-    --ok: #4ad395;
+    --bg: #0a1520;
+    --bg-gradient: linear-gradient(160deg, #0c1a2e 0%, #0a1520 40%, #08101c 100%);
+    --glass: rgba(10, 26, 52, 0.82);
+    --glass-border: rgba(79, 142, 247, 0.18);
+    --glass-hover: rgba(20, 50, 100, 0.55);
+    --surface: rgba(10, 26, 52, 0.78);
+    --surface-2: rgba(35, 80, 150, 0.14);
+    --border: rgba(79, 142, 247, 0.14);
+    --accent: #4f8ef7;
+    --accent-hover: #6ba3ff;
+    --accent-active: #2563eb;
+    --accent-glow: rgba(79, 142, 247, 0.35);
+    --accent-2: #a78bfa;
+    --green: #10b981;
+    --red: #f87171;
+    --yellow: #f59e0b;
+    --text: #f0f2f5;
+    --text-dim: #94a8b8;
+    --text-muted: #6b8399;
+    --gradient-action: linear-gradient(135deg, #4f8ef7, #2563eb);
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-full: 9999px;
+    --shadow-md: 0 4px 16px rgba(5, 15, 35, 0.35);
+    --shadow-lg: 0 8px 32px rgba(5, 15, 35, 0.5);
+    --glow-accent: 0 0 24px rgba(79, 142, 247, 0.35);
+    --font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
 
   body {
     margin: 0;
@@ -25,76 +50,282 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(circle at 50% 0%, #161a24 0%, var(--bg) 60%);
+    position: relative;
+    overflow-x: hidden;
+    background: var(--bg);
+    background-image: var(--bg-gradient);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    font-family: var(--font-primary);
     padding: 24px;
   }
 
+  /* Atmospheric texture — static gradient, zero animation cost */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 65% 55% at 60% 15%, rgba(100, 160, 255, 0.13) 0%, transparent 70%),
+      radial-gradient(ellipse 55% 50% at 80% 75%, rgba(59, 130, 246, 0.1) 0%, transparent 65%),
+      radial-gradient(ellipse 45% 40% at 55% 45%, rgba(180, 215, 255, 0.06) 0%, transparent 50%);
+  }
+
+  /* ── Aurora + light beam (breathing background), adapted from the
+     Ads Analyst / Bulk Upload shared design system. GPU-friendly:
+     only transform/opacity animate. ── */
+  .light-beam {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: linear-gradient(25deg, transparent 0%, transparent 33%, rgba(180, 200, 230, 0.03) 40%, rgba(210, 225, 245, 0.06) 44%, rgba(200, 220, 240, 0.07) 46%, rgba(210, 225, 245, 0.06) 48%, rgba(180, 200, 230, 0.03) 52%, transparent 59%, transparent 100%);
+    animation: beamDrift 25s ease-in-out infinite alternate;
+  }
+  @keyframes beamDrift {
+    0%   { opacity: .6; transform: translateX(-3vw); }
+    50%  { opacity: 1;  transform: translateX(0); }
+    100% { opacity: .7; transform: translateX(2vw); }
+  }
+
+  .aurora-layer {
+    position: fixed;
+    pointer-events: none;
+    z-index: -1;
+    border-radius: 50%;
+    filter: blur(50px);
+    opacity: .5;
+    will-change: transform;
+  }
+  .aurora-1 {
+    width: 70vw; height: 55vh; top: -10%; right: -5%;
+    background: radial-gradient(ellipse, rgba(100, 160, 255, 0.14) 0%, transparent 70%);
+    animation: aurora1 40s ease-in-out infinite alternate;
+  }
+  .aurora-2 {
+    width: 55vw; height: 50vh; bottom: -5%; right: -10%;
+    background: radial-gradient(ellipse, rgba(59, 130, 246, 0.11) 0%, transparent 65%);
+    animation: aurora2 50s ease-in-out infinite alternate;
+  }
+  .aurora-3 {
+    width: 45vw; height: 40vh; top: 20%; left: 35%;
+    background: radial-gradient(ellipse, rgba(180, 215, 255, 0.06) 0%, transparent 50%);
+    animation: aurora3 55s ease-in-out infinite alternate;
+  }
+  @keyframes aurora1 {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(-1.2vw,1.6vh) scale(1.06); }
+    100% { transform: translate(0.8vw,0.8vh) scale(.97); }
+  }
+  @keyframes aurora2 {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(1.4vw,-1.4vh) scale(1.07); }
+    100% { transform: translate(-1vw,-0.8vh) scale(.98); }
+  }
+  @keyframes aurora3 {
+    0%   { transform: translate(0,0) scale(1); opacity: .8; }
+    50%  { transform: translate(1vw,1.2vh) scale(1.09); opacity: 1; }
+    100% { transform: translate(-0.8vw,-1vh) scale(.94); opacity: .7; }
+  }
+
+  #constellation {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* Performance guardrails — required whenever aurora/beam/canvas are used */
+  @media (prefers-reduced-motion: reduce) {
+    .aurora-layer, .light-beam,
+    .neural-core, .neural-ring, .neural-ring-2, .neural-dot, .neural-wave { animation: none !important; }
+  }
+  body.bg-anim-paused .aurora-layer,
+  body.bg-anim-paused .light-beam,
+  body.bg-anim-paused .neural-core,
+  body.bg-anim-paused .neural-ring,
+  body.bg-anim-paused .neural-ring-2,
+  body.bg-anim-paused .neural-dot,
+  body.bg-anim-paused .neural-wave,
+  body.bg-anim-paused #mic-btn.listening { animation-play-state: paused !important; }
+
+  /* ── No boxed panel — content sits directly on the aurora/starfield, like
+     it's floating. A soft ambient glow (no hard edge) keeps it grounded
+     instead of a glass card, and text-shadow (inherited) keeps everything
+     legible over the moving background underneath. ── */
   .card {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 440px;
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 16px;
-    padding: 28px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    padding: 34px 28px;
+    text-shadow: 0 2px 14px rgba(4, 10, 22, 0.65);
   }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: -50px -30px;
+    z-index: -1;
+    background: radial-gradient(ellipse 65% 60% at 50% 38%, rgba(20, 46, 92, 0.32) 0%, rgba(12, 28, 55, 0.16) 45%, transparent 75%);
+    filter: blur(8px);
+    pointer-events: none;
+  }
+
+  /* ── AI presence orb — adapted from Ads Analyst Agent's neural-orb
+     (Arquitetura/public/index.html), trimmed: no tendril SVG layer (their
+     own comments flag it as the biggest GPU cost measured in prod there —
+     skipped outright here rather than ported-then-disabled). ── */
+  .orb-field {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .neural-orb { position: relative; width: 46px; height: 46px; }
+  .neural-core {
+    position: absolute; top: 50%; left: 50%; width: 30%; height: 30%;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
+    box-shadow: 0 0 12px var(--accent-glow), 0 0 22px rgba(79, 142, 247, 0.25);
+    animation: neuralPulse 5s ease-in-out infinite;
+  }
+  .neural-ring {
+    position: absolute; inset: 2px; border-radius: 50%;
+    border: 1.5px dashed rgba(79, 142, 247, 0.32);
+    animation: neuralSpin 20s linear infinite;
+  }
+  .neural-ring-2 {
+    position: absolute; inset: -8px; border-radius: 50%;
+    border: 1px dashed rgba(79, 142, 247, 0.16);
+    animation: neuralSpinReverse 28s linear infinite;
+    display: none;
+  }
+  .neural-dot {
+    position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent-2); box-shadow: 0 0 6px var(--accent-glow);
+    top: 50%; left: 50%; --orbit-radius: 30px;
+    animation: neuralOrbit 9s linear infinite;
+    display: none;
+  }
+  .neural-dot:nth-child(4) { animation-delay: 0s; }
+  .neural-dot:nth-child(5) { animation-delay: -3s; background: var(--accent-hover); }
+  .neural-dot:nth-child(6) { animation-delay: -6s; width: 4px; height: 4px; opacity: .7; }
+  .neural-wave {
+    position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
+    border-radius: 50%; border: 1px solid rgba(79, 142, 247, 0.5);
+    pointer-events: none; opacity: 0; animation: waveRipple 14s ease-out infinite;
+    display: none;
+  }
+  .neural-wave:last-child { animation-delay: 7s; }
+
+  @keyframes neuralPulse {
+    0%, 100% { transform: translate(-50%,-50%) scale(1); opacity: .7; }
+    50%      { transform: translate(-50%,-50%) scale(1.2); opacity: 1; }
+  }
+  @keyframes neuralSpin { to { transform: rotate(360deg); } }
+  @keyframes neuralSpinReverse { to { transform: rotate(-360deg); } }
+  @keyframes neuralOrbit {
+    from { transform: translate(-50%,-50%) rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg); }
+    to   { transform: translate(-50%,-50%) rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg); }
+  }
+  @keyframes waveRipple {
+    0%   { transform: translate(-50%,-50%) scale(.25); opacity: 0; }
+    6%   { opacity: .55; }
+    100% { transform: translate(-50%,-50%) scale(3); opacity: 0; }
+  }
+
+  /* States, set via JS on #ai-orb: idle (no class) only shows core+ring —
+     ring-2/dot/wave stay hidden until something is actually happening,
+     same idea the source component uses. connecting -> active (listening)
+     -> thinking (tool call in flight) each add motion/glow. */
+  .orb-field.connecting .neural-core   { animation-duration: 3.2s; }
+  .orb-field.connecting .neural-ring   { animation-duration: 12s; }
+  .orb-field.connecting .neural-ring-2 { display: block; animation-duration: 18s; }
+
+  .orb-field.active .neural-core   { animation-duration: 2.6s; }
+  .orb-field.active .neural-ring   { animation-duration: 8s; }
+  .orb-field.active .neural-ring-2 { display: block; animation-duration: 12s; }
+  .orb-field.active .neural-dot    { display: block; animation-duration: 6s; }
+  .orb-field.active .neural-wave   { display: block; animation-duration: 10s; }
+
+  .orb-field.thinking .neural-core {
+    animation-duration: 1.6s;
+    box-shadow: 0 0 16px var(--accent-glow), 0 0 30px rgba(79, 142, 247, 0.35);
+  }
+  .orb-field.thinking .neural-ring   { animation-duration: 5s; }
+  .orb-field.thinking .neural-ring-2 { display: block; animation-duration: 7s; }
+  .orb-field.thinking .neural-dot    { display: block; animation-duration: 3.5s; }
+  .orb-field.thinking .neural-wave   { display: block; animation-duration: 5s; }
 
   header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    justify-content: center;
     margin-bottom: 4px;
   }
 
   h1 {
+    font-family: var(--font-display);
     font-size: 1.4rem;
+    font-weight: 700;
     margin: 0;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
+    text-align: center;
+    text-shadow: 0 4px 20px rgba(4, 10, 22, 0.75);
   }
 
   .subtitle {
-    color: var(--muted);
+    color: var(--text-dim);
     font-size: 0.82rem;
-    margin: 0 0 20px;
+    margin: 6px 0 20px;
+    text-align: center;
   }
 
   .status-row {
     display: flex;
+    width: fit-content;
     align-items: center;
     gap: 8px;
-    margin-bottom: 18px;
-    font-size: 0.85rem;
-    color: var(--muted);
+    margin: 0 auto 20px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-dim);
   }
 
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--muted);
+    background: var(--text-muted);
     flex-shrink: 0;
     transition: background 0.2s ease;
   }
 
-  .dot.connecting { background: #e0b84c; animation: pulse 1.2s infinite; }
-  .dot.connected { background: var(--ok); }
-  .dot.error { background: var(--danger); }
+  .dot.connecting { background: var(--yellow); animation: pulse 1.2s infinite; }
+  .dot.connected  { background: var(--green); animation: dotGlow 2.4s ease-in-out infinite; }
+  .dot.error      { background: var(--red); }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
   }
+  @keyframes dotGlow {
+    0%, 100% { box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
+    50%      { box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
+  }
 
   .transcript {
-    height: 260px;
-    overflow-y: auto;
-    background: #0e1017;
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 18px;
+    min-height: 96px;
+    margin-bottom: 20px;
     font-size: 0.86rem;
     line-height: 1.45;
     display: flex;
@@ -102,17 +333,39 @@
     gap: 8px;
   }
 
-  .transcript:empty::before {
-    content: "Transcript will show up here once you connect.";
-    color: var(--muted);
-    font-style: italic;
+  .line {
+    padding: 2px 0;
+    animation: lineIn 0.35s ease both;
   }
-
-  .line { padding: 2px 0; }
-  .line-system { color: var(--muted); font-size: 0.8rem; }
-  .line-tool { color: var(--accent); font-size: 0.8rem; }
+  @keyframes lineIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .line.line-out {
+    animation: lineOut 0.6s ease forwards;
+  }
+  @keyframes lineOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-6px); }
+  }
+  .line-system    { color: var(--text-muted); font-size: 0.8rem; }
+  .line-tool      { color: var(--accent-hover); font-size: 0.8rem; }
   .line-assistant { color: var(--text); }
-  .line-error { color: var(--danger); }
+  .line-error     { color: var(--red); }
+
+  /* "Thinking" indicator while the knowledge-base lookup is in flight */
+  .typing-dots { display: inline-flex; gap: 4px; align-items: center; }
+  .typing-dots i {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent-hover);
+    animation: typingBounce 1.1s ease-in-out infinite;
+  }
+  .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30%           { opacity: 1;   transform: translateY(-3px); }
+  }
 
   .controls {
     display: flex;
@@ -122,45 +375,93 @@
   button {
     flex: 1;
     padding: 12px 16px;
-    border-radius: 10px;
-    border: 1px solid var(--panel-border);
-    background: #1a1f2b;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
     color: var(--text);
+    font-family: var(--font-primary);
     font-size: 0.92rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease, opacity 0.15s ease;
+    text-shadow: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.15s ease;
   }
 
-  button:hover:not(:disabled) { background: #212739; }
+  button:hover:not(:disabled) { background: var(--glass-hover); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   #connect-btn {
-    background: var(--accent-dim);
-    border-color: var(--accent);
+    background: var(--gradient-action);
+    border-color: transparent;
+    color: #fff;
   }
-
+  #connect-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--glow-accent);
+  }
   #connect-btn.active {
-    background: #3a1f28;
-    border-color: var(--danger);
+    background: rgba(248, 113, 113, 0.12);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  #connect-btn.active:hover:not(:disabled) {
+    box-shadow: 0 0 24px rgba(248, 113, 113, 0.3);
   }
 
   #mic-btn.muted {
-    background: #2a1f1f;
-    border-color: var(--danger);
-    color: var(--danger);
+    background: rgba(248, 113, 113, 0.1);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  /* Live-listening feedback: a soft breathing ring while the mic is
+     connected and unmuted — reads as "it's hearing you" at a glance. */
+  #mic-btn.listening {
+    border-color: var(--accent);
+    animation: micPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes micPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 142, 247, 0.35); }
+    50%      { box-shadow: 0 0 0 6px rgba(79, 142, 247, 0); }
   }
 
   footer {
-    margin-top: 16px;
-    color: var(--muted);
+    margin-top: 18px;
+    color: var(--text-muted);
     font-size: 0.74rem;
     text-align: center;
+  }
+
+  @media (max-width: 480px) {
+    body { padding: 16px; }
+    .card { padding: 22px 18px; }
+    h1 { font-size: 1.22rem; }
+    .orb-field { width: 68px; height: 68px; }
+    .neural-orb { width: 38px; height: 38px; }
+    .transcript { min-height: 84px; font-size: 0.82rem; }
+    .aurora-3 { display: none; } /* one fewer animated layer on small/low-power screens */
   }
 </style>
 </head>
 <body>
+  <div class="light-beam"></div>
+  <div class="aurora-layer aurora-1"></div>
+  <div class="aurora-layer aurora-2"></div>
+  <div class="aurora-layer aurora-3"></div>
+  <canvas id="constellation"></canvas>
+
   <div class="card">
+    <div class="orb-field" id="ai-orb" aria-hidden="true">
+      <div class="neural-orb">
+        <div class="neural-core"></div>
+        <div class="neural-ring"></div>
+        <div class="neural-ring-2"></div>
+        <div class="neural-dot"></div>
+        <div class="neural-dot"></div>
+        <div class="neural-dot"></div>
+        <div class="neural-wave"></div>
+        <div class="neural-wave"></div>
+      </div>
+    </div>
     <header>
       <h1>Mnemosyne</h1>
     </header>
@@ -183,6 +484,161 @@
 
   <audio id="remote-audio" autoplay></audio>
 
+  <script>
+    // Breathing starfield behind the aurora — same visual language as
+    // Ads Analyst Agent / Meta Ads Bulk Upload (Arquitetura/public/_shared/background.js),
+    // trimmed for a single static page: no cross-page injection needed here,
+    // the layers above are already in the markup.
+    (function () {
+      "use strict";
+      var prefersReduced = false;
+      try { prefersReduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+
+      var canvas = document.getElementById("constellation");
+      var ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+      var w, h, stars = [], nebulae = [];
+      // Fewer stars on small screens — same idea as the responsive font-size
+      // rule above, just applied to the canvas: less to draw on weaker mobile GPUs.
+      var STAR_COUNT = window.innerWidth < 600 ? 10 : 18;
+      var MAX_DIST = 160;
+      var FRAME_INTERVAL = 1000 / 20; // 20fps cap
+      var lastFrameTime = 0;
+      var isVisible = true;
+      var rafHandle = null;
+
+      function resize() {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+      }
+
+      function createStars() {
+        stars = [];
+        for (var i = 0; i < STAR_COUNT; i++) {
+          stars.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.1,
+            vy: (Math.random() - 0.5) * 0.1,
+            r: Math.random() * 1.2 + 0.3,
+            opacity: Math.random() * 0.25 + 0.05
+          });
+        }
+      }
+
+      var NEB_R = 220;
+      function makeNebulaSprite(color) {
+        var s = document.createElement("canvas");
+        s.width = s.height = NEB_R * 2;
+        var sx = s.getContext("2d");
+        var g = sx.createRadialGradient(NEB_R, NEB_R, 0, NEB_R, NEB_R, NEB_R);
+        g.addColorStop(0,   "rgba(" + color.r + "," + color.g + "," + color.b + ",0.06)");
+        g.addColorStop(0.3, "rgba(" + color.r + "," + color.g + "," + color.b + ",0.04)");
+        g.addColorStop(0.6, "rgba(" + color.r + "," + color.g + "," + color.b + ",0.02)");
+        g.addColorStop(1,   "rgba(" + color.r + "," + color.g + "," + color.b + ",0)");
+        sx.fillStyle = g;
+        sx.fillRect(0, 0, NEB_R * 2, NEB_R * 2);
+        return s;
+      }
+
+      function createNebulae() {
+        nebulae = [];
+        var colors = [{ r: 94, g: 169, b: 222 }, { r: 79, g: 142, b: 247 }];
+        for (var i = 0; i < 2; i++) {
+          nebulae.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.08,
+            vy: (Math.random() - 0.5) * 0.08,
+            sprite: makeNebulaSprite(colors[i]),
+            baseOpacity: 0.04 + Math.random() * 0.02,
+            phase: Math.random() * Math.PI * 2,
+            phaseSpeed: 0.002
+          });
+        }
+      }
+
+      function drawNebula(n) {
+        n.phase += n.phaseSpeed;
+        var breathe = Math.sin(n.phase) * 0.3 + 0.7;
+        ctx.globalAlpha = n.baseOpacity * breathe * breathe;
+        ctx.drawImage(n.sprite, n.x - NEB_R, n.y - NEB_R);
+        ctx.globalAlpha = 1;
+        n.x += n.vx;
+        n.y += n.vy;
+        if (n.x < -200 || n.x > w + 200) n.vx *= -1;
+        if (n.y < -200 || n.y > h + 200) n.vy *= -1;
+      }
+
+      function renderFrame() {
+        ctx.clearRect(0, 0, w, h);
+
+        for (var k = 0; k < nebulae.length; k++) drawNebula(nebulae[k]);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+        ctx.lineWidth = 0.5;
+        for (var i = 0; i < stars.length; i++) {
+          for (var j = i + 1; j < stars.length; j++) {
+            var dx = stars[i].x - stars[j].x;
+            var dy = stars[i].y - stars[j].y;
+            var distSq = dx * dx + dy * dy;
+            if (distSq < MAX_DIST * MAX_DIST) {
+              ctx.globalAlpha = (1 - Math.sqrt(distSq) / MAX_DIST) * 0.05;
+              ctx.beginPath();
+              ctx.moveTo(stars[i].x, stars[i].y);
+              ctx.lineTo(stars[j].x, stars[j].y);
+              ctx.stroke();
+            }
+          }
+        }
+        ctx.globalAlpha = 1;
+
+        for (var s = 0; s < stars.length; s++) {
+          var st = stars[s];
+          ctx.globalAlpha = st.opacity;
+          ctx.beginPath();
+          ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255, 255, 255, 1)";
+          ctx.fill();
+          st.x += st.vx;
+          st.y += st.vy;
+          if (st.x < -10) st.x = w + 10;
+          if (st.x > w + 10) st.x = -10;
+          if (st.y < -10) st.y = h + 10;
+          if (st.y > h + 10) st.y = -10;
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function draw(time) {
+        if (!isVisible) { rafHandle = null; return; }
+        var deltaTime = time - lastFrameTime;
+        if (deltaTime < FRAME_INTERVAL) { rafHandle = requestAnimationFrame(draw); return; }
+        lastFrameTime = time - (deltaTime % FRAME_INTERVAL);
+        renderFrame();
+        rafHandle = requestAnimationFrame(draw);
+      }
+
+      document.addEventListener("visibilitychange", function () {
+        isVisible = !document.hidden;
+        document.body.classList.toggle("bg-anim-paused", document.hidden);
+        if (isVisible && !rafHandle && !prefersReduced) rafHandle = requestAnimationFrame(draw);
+      });
+
+      var resizeTimeout;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function () {
+          resize(); createStars(); createNebulae();
+          if (prefersReduced) renderFrame();
+        }, 250);
+      });
+
+      if (prefersReduced) document.body.classList.add("bg-anim-paused");
+      resize(); createStars(); createNebulae();
+      if (prefersReduced) renderFrame(); // one static frame, no loop
+      else rafHandle = requestAnimationFrame(draw);
+    })();
+  </script>
   <script src="/mnemosyne/app.js"></script>
 </body>
 </html>

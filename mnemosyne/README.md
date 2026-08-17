@@ -14,6 +14,10 @@ Browser-side client for talking to the agent over the OpenAI Realtime API (WebRT
 
 The whole `/mnemosyne*` origin (the page, `app.js`, and the `/realtime/*` routes it calls) sits behind server-side HTTP Basic Auth. The browser prompts once and caches the credentials, resending them automatically on every same-origin request — including the `fetch()` calls in `app.js` — so no token lives in the frontend code. There used to be a separate widget API key baked into `app.js` at request time; it was dropped once Basic Auth covered the whole origin, since the two mechanisms collided on the same `Authorization` header and there was no secret left worth hiding in the JS anyway.
 
+## Visual identity
+
+The blue/navy palette and the aurora + light-beam + breathing-starfield background are adapted from the shared design system used by **Ads Analyst Agent** and **Meta Ads Bulk Upload** (source of truth: `Ads Analyst Agent/docs/design/visual-identity.md`; canvas logic adapted from `Meta Ads - Bulk Upload/Arquitetura/public/_shared/background.js`). Kept inline in `index.html`/`app.js` — this widget has no build step and no static-file mount, and each asset here is served by its own explicit FastAPI route, so a separate `style.css`/`background.js` would mean touching `api.py`. All the standard perf guardrails carried over: `prefers-reduced-motion` (single static frame, no animation loop), pause on tab-hidden, 20fps cap on the canvas, and a reduced star count under 600px viewport width.
+
 ## Known rough edge
 
 `/realtime/query`'s response is the same stream `send_message_to_ai()` produces for WhatsApp — it interleaves "Pensando..." and raw tool-call summaries with the actual answer, with no delimiter between chunks. The widget currently forwards the *whole* stream as the function result, so the voice agent may occasionally repeat that noise back. Cleanly separating "final answer" from "debug narration" needs a backend change (e.g. structured/typed chunks) — not done here.

@@ -15,6 +15,7 @@ const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const transcriptEl = document.getElementById("transcript");
 const remoteAudio = document.getElementById("remote-audio");
+const aiOrb = document.getElementById("ai-orb");
 
 let pc = null;
 let dc = null;
@@ -28,13 +29,39 @@ function setStatus(text, state) {
   statusDot.className = "dot" + (state ? ` ${state}` : "");
 }
 
+// state: "" (idle) | "connecting" | "active" (connected, listening) | "thinking" (tool call in flight)
+function setOrbState(state) {
+  aiOrb.className = "orb-field" + (state ? ` ${state}` : "");
+}
+
+// Transcript reads as floating captions, not a chat log: each line fades in,
+// sticks around for a few seconds, then fades out on its own. Capped at
+// MAX_LINES as a safety net in case several lines land faster than they fade.
+const MAX_LINES = 3;
+const LINE_HOLD_MS = { system: 4000, tool: 4000, assistant: 7000, error: 6000 };
+const LINE_FADE_MS = 600;
+
 function addLine(role, text) {
   const p = document.createElement("p");
   p.className = `line line-${role}`;
   p.textContent = text;
   transcriptEl.appendChild(p);
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  while (transcriptEl.children.length > MAX_LINES) {
+    transcriptEl.firstElementChild.remove();
+  }
   return p;
+}
+
+// Call once a line's final content is set — starts its fade-out countdown.
+// Kept separate from addLine() because the "assistant" line is created early
+// (to show the typing dots) and keeps being rewritten while streaming; it
+// should only start counting down once the real answer lands.
+function scheduleFade(el, role) {
+  setTimeout(() => {
+    if (!el.isConnected) return;
+    el.classList.add("line-out");
+    setTimeout(() => el.remove(), LINE_FADE_MS);
+  }, LINE_HOLD_MS[role] ?? 5000);
 }
 
 async function fetchEphemeralKey() {
@@ -70,14 +97,13 @@ async function queryKnowledgeBase(request, liveLine) {
     if (done) break;
     full += decoder.decode(value, { stream: true });
     liveLine.textContent = full;
-    transcriptEl.scrollTop = transcriptEl.scrollHeight;
   }
   return full;
 }
 
 async function handleFunctionCall(name, callId, argsJson) {
   if (name !== KNOWLEDGE_BASE_TOOL) {
-    addLine("error", `Unknown tool requested: ${name}`);
+    scheduleFade(addLine("error", `Unknown tool requested: ${name}`), "error");
     return;
   }
 
@@ -88,8 +114,10 @@ async function handleFunctionCall(name, callId, argsJson) {
     request = argsJson;
   }
 
-  addLine("tool", `Looking up: ${request}`);
-  const liveLine = addLine("assistant", "…");
+  setOrbState("thinking");
+  scheduleFade(addLine("tool", `Looking up: ${request}`), "tool");
+  const liveLine = addLine("assistant", "");
+  liveLine.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
 
   let output;
   try {
@@ -98,6 +126,8 @@ async function handleFunctionCall(name, callId, argsJson) {
     output = `Lookup failed: ${err.message}`;
     liveLine.textContent = output;
   }
+  scheduleFade(liveLine, "assistant");
+  setOrbState(connected ? "active" : "");
 
   if (!dc || dc.readyState !== "open") return;
 
@@ -131,7 +161,7 @@ function handleServerEvent(raw) {
       break;
     }
     case "error":
-      addLine("error", event.error?.message ?? "Unknown realtime error");
+      scheduleFade(addLine("error", event.error?.message ?? "Unknown realtime error"), "error");
       break;
     default:
       break;
@@ -141,6 +171,7 @@ function handleServerEvent(raw) {
 async function connect() {
   connectBtn.disabled = true;
   setStatus("Connecting…", "connecting");
+  setOrbState("connecting");
 
   try {
     sessionId = crypto.randomUUID();
@@ -159,11 +190,13 @@ async function connect() {
     dc.addEventListener("open", () => {
       connected = true;
       setStatus("Connected", "connected");
+      setOrbState("active");
       connectBtn.textContent = "Disconnect";
       connectBtn.classList.add("active");
       connectBtn.disabled = false;
       micBtn.disabled = false;
-      addLine("system", "Connected. Start talking.");
+      micBtn.classList.add("listening");
+      scheduleFade(addLine("system", "Connected. Start talking."), "system");
     });
     dc.addEventListener("close", () => {
       if (connected) disconnect();
@@ -190,7 +223,7 @@ async function connect() {
     });
   } catch (err) {
     setStatus(`Error: ${err.message}`, "error");
-    addLine("error", err.message);
+    scheduleFade(addLine("error", err.message), "error");
     cleanup();
     connectBtn.disabled = false;
   }
@@ -207,7 +240,9 @@ function cleanup() {
   micMuted = false;
   micBtn.textContent = "Mute";
   micBtn.classList.remove("muted");
+  micBtn.classList.remove("listening");
   micBtn.disabled = true;
+  setOrbState("");
 }
 
 function disconnect() {
@@ -216,7 +251,7 @@ function disconnect() {
   connectBtn.textContent = "Connect";
   connectBtn.classList.remove("active");
   connectBtn.disabled = false;
-  addLine("system", "Disconnected.");
+  scheduleFade(addLine("system", "Disconnected."), "system");
 }
 
 connectBtn.addEventListener("click", () => {
@@ -233,4 +268,5 @@ micBtn.addEventListener("click", () => {
   micStream.getTracks().forEach((t) => (t.enabled = !micMuted));
   micBtn.textContent = micMuted ? "Unmute" : "Mute";
   micBtn.classList.toggle("muted", micMuted);
+  micBtn.classList.toggle("listening", !micMuted);
 });

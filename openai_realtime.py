@@ -21,9 +21,9 @@ async def  create_openai_realtime_session() -> str:
     params = {
         "session": {
             "type": "realtime",
-            "model": "gpt-realtime",
+            "model": "gpt-realtime-2.1",
             "audio": {
-                "output": {"voice": "shimmer"},
+                "output": {"voice": "marin"},
                 "input": {"transcription": {"model": "gpt-4o-mini-transcribe"}}
             },
             "instructions": openai_realtimeapi_prompt,

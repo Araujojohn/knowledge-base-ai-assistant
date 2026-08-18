@@ -4,11 +4,13 @@ from nodes import agent_node
 from unittest.mock import patch, AsyncMock
 from langchain_core.messages import AIMessage
 
-#teste de formato de resposta 
+#teste de formato de resposta
 @pytest.mark.asyncio
-@patch("nodes.model", new_callable=AsyncMock)
-async def test_agent_node_retorna_resposta_no_formato_correto(mock_model):
+@patch("nodes.check_if_model_changed")
+async def test_agent_node_retorna_resposta_no_formato_correto(mock_check_if_model_changed):
+  mock_model = AsyncMock()
   mock_model.ainvoke.return_value = AIMessage(content="resposta de teste no formato correto")
+  mock_check_if_model_changed.return_value = mock_model
 
   mensagem = {"messages": [("human", "oi")]}
 
@@ -18,11 +20,13 @@ async def test_agent_node_retorna_resposta_no_formato_correto(mock_model):
 
 
 
-#teste de fallback erro 
+#teste de fallback erro
 @pytest.mark.asyncio
-@patch("nodes.model", new_callable=AsyncMock)
-async def test_agent_node_retorna_resposta_fallback(mock_model):
+@patch("nodes.check_if_model_changed")
+async def test_agent_node_retorna_resposta_fallback(mock_check_if_model_changed):
+  mock_model = AsyncMock()
   mock_model.ainvoke.side_effect = Exception("erro simulado")
+  mock_check_if_model_changed.return_value = mock_model
 
   mensagem = {"messages": [("human", "oi")]}
 

@@ -103,8 +103,12 @@ function stopSpeakingAnalysis() {
 const STATUS_HOLD_MS = 5000;
 const LINE_FADE_MS = 600;
 
+// Only stick to the bottom if already close to it — called on every single
+// typewriter tick (see below), so without this check it would fight anyone
+// who scrolled up to reread something, yanking them back down constantly.
 function scrollTranscriptToBottom() {
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  const distanceFromBottom = transcriptEl.scrollHeight - transcriptEl.scrollTop - transcriptEl.clientHeight;
+  if (distanceFromBottom < 80) transcriptEl.scrollTop = transcriptEl.scrollHeight;
 }
 
 function addSystemLine(text, role = "system") {
@@ -313,13 +317,17 @@ async function handleFunctionCall(name, callId, argsJson) {
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
-// response.output_audio_transcript.delta chunks arrive faster than the
-// matching audio actually plays (text generation isn't paced to speech
-// speed) — dumping each delta straight into .textContent made the words
-// appear well ahead of the voice. Queue incoming text per-bubble and drip
-// it out at roughly speaking pace (~14 chars/sec, close to average speech)
-// instead, so the reveal tracks what's actually being said.
-const TYPEWRITER_MS_PER_CHAR = 70;
+// response.output_audio_transcript.delta chunks aren't paced to match the
+// audio's actual playback speed, so dumping each delta straight into
+// .textContent could land well ahead of or behind the voice depending on
+// how fast a given response happens to generate — a fixed guessed rate
+// (tried 2 different ones) got one direction wrong each time. Self-adjusting
+// instead: reveal at a brisk fixed pace normally, but if incoming text is
+// piling up faster than that (backlog growing), reveal more per tick to
+// catch up — bounds the worst-case lag instead of drifting arbitrarily far
+// behind regardless of the true rate for this particular response/voice.
+const TYPEWRITER_TICK_MS = 30;
+const TYPEWRITER_CATCHUP_CHARS = 40; // backlog beyond this starts revealing >1 char/tick
 function typewriterAppend(bubble, text) {
   bubble._twQueue = (bubble._twQueue ?? "") + text;
   if (bubble._twTimer) return; // already draining the queue
@@ -329,10 +337,11 @@ function typewriterAppend(bubble, text) {
       bubble._twTimer = null;
       return;
     }
-    bubble.textContent += bubble._twQueue[0];
-    bubble._twQueue = bubble._twQueue.slice(1);
+    const chunkSize = Math.max(1, Math.ceil(bubble._twQueue.length / TYPEWRITER_CATCHUP_CHARS));
+    bubble.textContent += bubble._twQueue.slice(0, chunkSize);
+    bubble._twQueue = bubble._twQueue.slice(chunkSize);
     scrollTranscriptToBottom();
-  }, TYPEWRITER_MS_PER_CHAR);
+  }, TYPEWRITER_TICK_MS);
 }
 
 function handleServerEvent(raw) {

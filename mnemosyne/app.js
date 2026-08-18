@@ -326,7 +326,7 @@ async function handleFunctionCall(name, callId, argsJson) {
 // piling up faster than that (backlog growing), reveal more per tick to
 // catch up — bounds the worst-case lag instead of drifting arbitrarily far
 // behind regardless of the true rate for this particular response/voice.
-const TYPEWRITER_TICK_MS = 30;
+const TYPEWRITER_TICK_MS = 50; // midpoint between the 70ms/char try (too slow) and 30ms (too fast)
 const TYPEWRITER_CATCHUP_CHARS = 40; // backlog beyond this starts revealing >1 char/tick
 function typewriterAppend(bubble, text) {
   bubble._twQueue = (bubble._twQueue ?? "") + text;

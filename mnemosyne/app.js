@@ -25,6 +25,13 @@ let sessionId = null;
 let connected = false;
 let toolCallInFlight = false;
 
+// Bubble/element reserved per conversation item id, keyed at
+// conversation.item.created time (true chronological order) so content
+// that arrives later (transcription, streamed text) lands in the right
+// spot instead of wherever it happened to finish. See handleServerEvent's
+// "conversation.item.created" case.
+const itemBubbles = new Map();
+
 function setStatus(text, state) {
   statusText.textContent = text;
   statusDot.className = "dot" + (state ? ` ${state}` : "");
@@ -226,7 +233,7 @@ async function queryKnowledgeBase(request, bubble, onProgress) {
   return finalAnswer;
 }
 
-async function handleFunctionCall(name, callId, argsJson) {
+async function handleFunctionCall(itemId, name, callId, argsJson) {
   if (name !== KNOWLEDGE_BASE_TOOL) {
     scheduleFade(addSystemLine(`Unknown tool requested: ${name}`, "error"));
     return;
@@ -241,7 +248,13 @@ async function handleFunctionCall(name, callId, argsJson) {
 
   toolCallInFlight = true;
   setOrbState("thinking");
-  const bubble = addAssistantMessage();
+  // Reuse the bubble already reserved by conversation.item.created (correct
+  // chronological slot) instead of appending a new one now — response.done
+  // (which is what triggers this function) can fire well after the item
+  // itself was created, so appending fresh here would land it after
+  // messages that actually came later (see itemBubbles below).
+  let bubble = itemBubbles.get(itemId);
+  if (!bubble) bubble = addAssistantMessage();
 
   // One activity pill per tool the agent calls along the way — the backend
   // stream doesn't say when an individual tool call finishes, only when the
@@ -294,13 +307,6 @@ async function handleFunctionCall(name, callId, argsJson) {
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
-// The assistant's own bubble for whatever it's currently saying out loud
-// (plain conversation, not a tool lookup — that path has its own bubble via
-// addAssistantMessage() in handleFunctionCall). Reset to null on
-// response.output_audio_transcript.done so the next turn starts a fresh bubble.
-let liveAssistantBubble = null;
-let liveAssistantText = "";
-
 function handleServerEvent(raw) {
   let event;
   try {
@@ -320,24 +326,52 @@ function handleServerEvent(raw) {
     case "output_audio_buffer.cleared": // cleared on interruption/barge-in
       stopSpeakingAnalysis();
       break;
-    // Requires audio.input.transcription set in the session config
-    // (openai_realtime.py) — without it this event never fires.
-    case "conversation.item.input_audio_transcription.completed":
-      if (event.transcript) addUserMessage(event.transcript);
-      break;
-    // Text version of what the assistant is speaking, streamed incrementally.
-    case "response.output_audio_transcript.delta":
-      if (!liveAssistantBubble) {
-        liveAssistantBubble = addAssistantMessage();
-        liveAssistantText = "";
+
+    // Fires the instant a turn starts — for a user turn, right when the
+    // mic audio is committed (well before transcription finishes); for an
+    // assistant turn, right when generation starts (before any text/audio
+    // streams). This is what's actually in chronological order — reserve
+    // the bubble's position here, content gets filled in by whichever
+    // event below carries it, matched by item.id.
+    case "conversation.item.created": {
+      const item = event.item;
+      if (!item) break;
+      if (item.type === "message" && item.role === "user") {
+        itemBubbles.set(item.id, addUserMessage("…"));
+      } else if (item.type === "message" && item.role === "assistant") {
+        itemBubbles.set(item.id, addAssistantMessage());
+      } else if (item.type === "function_call") {
+        itemBubbles.set(item.id, addAssistantMessage());
       }
-      liveAssistantText += event.delta;
-      liveAssistantBubble.textContent = liveAssistantText;
+      break;
+    }
+
+    // Requires audio.input.transcription set in the session config
+    // (openai_realtime.py) — without it this event never fires. Often
+    // arrives well after the item itself was created (separate, slower
+    // pipeline) — fills the placeholder reserved above instead of
+    // appending a new bubble at the (wrong, later) point it arrives.
+    case "conversation.item.input_audio_transcription.completed": {
+      if (!event.transcript) break;
+      const bubble = itemBubbles.get(event.item_id);
+      if (bubble) bubble.textContent = event.transcript;
+      else addUserMessage(event.transcript); // fallback: item.created never seen
       scrollTranscriptToBottom();
       break;
-    case "response.output_audio_transcript.done":
-      liveAssistantBubble = null;
+    }
+
+    // Text version of what the assistant is speaking, streamed incrementally
+    // into the bubble reserved by conversation.item.created.
+    case "response.output_audio_transcript.delta": {
+      let bubble = itemBubbles.get(event.item_id);
+      if (!bubble) {
+        bubble = addAssistantMessage(); // fallback: item.created never seen
+        itemBubbles.set(event.item_id, bubble);
+      }
+      bubble.textContent += event.delta;
+      scrollTranscriptToBottom();
       break;
+    }
     case "response.done": {
       // Safety net: if the buffer events above never fired for some reason,
       // don't leave the orb stuck showing "speaking" forever.
@@ -345,7 +379,7 @@ function handleServerEvent(raw) {
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
-          handleFunctionCall(item.name, item.call_id, item.arguments);
+          handleFunctionCall(item.id, item.name, item.call_id, item.arguments);
         }
       }
       break;
@@ -436,8 +470,7 @@ function cleanup() {
   analyser = null;
   levelData = null;
   speakingRaf = null;
-  liveAssistantBubble = null;
-  liveAssistantText = "";
+  itemBubbles.clear();
   micBtn.textContent = "Mute";
   micBtn.classList.remove("muted");
   micBtn.classList.remove("listening");

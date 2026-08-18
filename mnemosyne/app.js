@@ -307,12 +307,41 @@ async function handleFunctionCall(itemId, name, callId, argsJson) {
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
+// response.output_audio_transcript.delta chunks arrive faster than the
+// matching audio actually plays (text generation isn't paced to speech
+// speed) — dumping each delta straight into .textContent made the words
+// appear well ahead of the voice. Queue incoming text per-bubble and drip
+// it out at roughly speaking pace (~14 chars/sec, close to average speech)
+// instead, so the reveal tracks what's actually being said.
+const TYPEWRITER_MS_PER_CHAR = 70;
+function typewriterAppend(bubble, text) {
+  bubble._twQueue = (bubble._twQueue ?? "") + text;
+  if (bubble._twTimer) return; // already draining the queue
+  bubble._twTimer = setInterval(() => {
+    if (!bubble._twQueue) {
+      clearInterval(bubble._twTimer);
+      bubble._twTimer = null;
+      return;
+    }
+    bubble.textContent += bubble._twQueue[0];
+    bubble._twQueue = bubble._twQueue.slice(1);
+    scrollTranscriptToBottom();
+  }, TYPEWRITER_MS_PER_CHAR);
+}
+
 function handleServerEvent(raw) {
   let event;
   try {
     event = JSON.parse(raw);
   } catch {
     return;
+  }
+
+  // Temporary diagnostic: real arrival order/timing of these events is what
+  // the bubble-ordering fix depends on — log it so a mis-ordered transcript
+  // can be root-caused from the browser console (F12) instead of guessed at.
+  if (["conversation.item.created", "conversation.item.input_audio_transcription.completed", "response.output_audio_transcript.delta", "response.output_audio_transcript.done", "response.done"].includes(event.type)) {
+    console.log(`[EVT ${performance.now().toFixed(0)}ms]`, event.type, "item:", event.item?.id ?? event.item_id ?? "-", "role:", event.item?.role ?? "-");
   }
 
   switch (event.type) {
@@ -368,8 +397,7 @@ function handleServerEvent(raw) {
         bubble = addAssistantMessage(); // fallback: item.created never seen
         itemBubbles.set(event.item_id, bubble);
       }
-      bubble.textContent += event.delta;
-      scrollTranscriptToBottom();
+      typewriterAppend(bubble, event.delta);
       break;
     }
     case "response.done": {

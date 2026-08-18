@@ -1,6 +1,6 @@
 from langchain_anthropic import ChatAnthropic
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from state import AgentState
 from tools import tools
 import os
@@ -52,8 +52,23 @@ def check_if_model_changed():
 
 system_prompt = prompts.agent_node_system_prompt
 
+def safe_message_window(messages, n=30):
+    """Corta as ultimas n mensagens, mas nunca no meio de um par tool-call/tool-response.
+
+    Um corte cego por quantidade pode deixar uma AIMessage com tool_calls como
+    primeira mensagem da janela — sem o turno de usuario (ou de resposta de
+    tool) que precisa vir antes dela. O Anthropic tolera isso; o Gemini rejeita
+    (400 INVALID_ARGUMENT: "function call turn comes immediately after a user
+    turn or after a function response turn"). Andar pra tras ate a ultima
+    HumanMessage garante um ponto de corte valido pra qualquer provider.
+    """
+    start = max(0, len(messages) - n)
+    while start > 0 and not isinstance(messages[start], HumanMessage):
+        start -= 1
+    return messages[start:]
+
 async def agent_node(state: AgentState):
-    mensagens = [("system", system_prompt)] + state["messages"][-30:]
+    mensagens = [("system", system_prompt)] + safe_message_window(state["messages"])
     model = check_if_model_changed()
     try:
      response = await model.ainvoke(mensagens)

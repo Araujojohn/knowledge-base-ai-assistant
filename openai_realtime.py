@@ -24,7 +24,14 @@ async def  create_openai_realtime_session() -> str:
             "model": "gpt-realtime-2.1",
             "audio": {
                 "output": {"voice": "marin"},
-                "input": {"transcription": {"model": "whisper-1"}}
+                "input": {
+                    "transcription": {"model": "whisper-1"},
+                    # Default silence_duration_ms (500) was cutting in during
+                    # normal mid-sentence thinking pauses, not just real
+                    # turn-ends. 900ms gives more room before treating
+                    # silence as "done talking".
+                    "turn_detection": {"type": "server_vad", "silence_duration_ms": 900}
+                }
             },
             "instructions": openai_realtimeapi_prompt,
             "tools": [

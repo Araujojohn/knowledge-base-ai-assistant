@@ -119,7 +119,7 @@ function addUserMessage(text) {
 
 // Returns the inner .msg-bubble — callers just keep setting .textContent
 // on it as more of the answer streams in (see queryKnowledgeBase()/
-// response.audio_transcript.delta below).
+// response.output_audio_transcript.delta below).
 function addAssistantMessage() {
   const wrap = document.createElement("div");
   wrap.className = "msg msg-assistant";
@@ -297,7 +297,7 @@ async function handleFunctionCall(name, callId, argsJson) {
 // The assistant's own bubble for whatever it's currently saying out loud
 // (plain conversation, not a tool lookup — that path has its own bubble via
 // addAssistantMessage() in handleFunctionCall). Reset to null on
-// response.audio_transcript.done so the next turn starts a fresh bubble.
+// response.output_audio_transcript.done so the next turn starts a fresh bubble.
 let liveAssistantBubble = null;
 let liveAssistantText = "";
 
@@ -326,7 +326,7 @@ function handleServerEvent(raw) {
       if (event.transcript) addUserMessage(event.transcript);
       break;
     // Text version of what the assistant is speaking, streamed incrementally.
-    case "response.audio_transcript.delta":
+    case "response.output_audio_transcript.delta":
       if (!liveAssistantBubble) {
         liveAssistantBubble = addAssistantMessage();
         liveAssistantText = "";
@@ -335,7 +335,7 @@ function handleServerEvent(raw) {
       liveAssistantBubble.textContent = liveAssistantText;
       scrollTranscriptToBottom();
       break;
-    case "response.audio_transcript.done":
+    case "response.output_audio_transcript.done":
       liveAssistantBubble = null;
       break;
     case "response.done": {

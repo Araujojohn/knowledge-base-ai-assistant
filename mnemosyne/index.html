@@ -212,8 +212,10 @@
     position: absolute; width: 5px; height: 5px; border-radius: 50%;
     background: var(--accent-2); box-shadow: 0 0 6px var(--accent-glow);
     top: 50%; left: 50%; --orbit-radius: 30px;
-    animation: neuralOrbit 9s linear infinite;
-    display: none;
+    /* Slow by default (idle/connecting/active/thinking) — only "speaking"
+       speeds this up, so a fast orbit reads as an unambiguous "she's
+       talking right now" signal instead of blending into every state. */
+    animation: neuralOrbit 16s linear infinite;
   }
   .neural-dot:nth-child(4) { animation-delay: 0s; }
   .neural-dot:nth-child(5) { animation-delay: -3s; background: var(--accent-hover); }
@@ -243,9 +245,11 @@
   }
 
   /* States, set via JS on #ai-orb: idle (no class) only shows core+ring —
-     ring-2/dot/wave stay hidden until something is actually happening,
-     same idea the source component uses. connecting -> active (listening)
-     -> thinking (tool call in flight) each add motion/glow. */
+     ring-2/wave stay hidden until something is actually happening, same
+     idea the source component uses (the orbiting dots are the exception —
+     they're always visible, slow by default; see .neural-dot above).
+     connecting -> active (listening) -> thinking (tool call in flight)
+     each add motion/glow. */
   .orb-field.connecting .neural-core   { animation-duration: 3.2s; }
   .orb-field.connecting .neural-ring   { animation-duration: 12s; }
   .orb-field.connecting .neural-ring-2 { display: block; animation-duration: 18s; }
@@ -253,7 +257,6 @@
   .orb-field.active .neural-core   { animation-duration: 2.6s; }
   .orb-field.active .neural-ring   { animation-duration: 8s; }
   .orb-field.active .neural-ring-2 { display: block; animation-duration: 12s; }
-  .orb-field.active .neural-dot    { display: block; animation-duration: 6s; }
   .orb-field.active .neural-wave   { display: block; animation-duration: 10s; }
 
   .orb-field.thinking .neural-core {
@@ -262,7 +265,6 @@
   }
   .orb-field.thinking .neural-ring   { animation-duration: 5s; }
   .orb-field.thinking .neural-ring-2 { display: block; animation-duration: 7s; }
-  .orb-field.thinking .neural-dot    { display: block; animation-duration: 3.5s; }
   .orb-field.thinking .neural-wave   { display: block; animation-duration: 5s; }
 
   /* Speaking — the core stops running its own rhythm and tracks the actual
@@ -279,7 +281,7 @@
   }
   .orb-field.speaking .neural-ring   { animation-duration: 7s; }
   .orb-field.speaking .neural-ring-2 { display: block; animation-duration: 10s; }
-  .orb-field.speaking .neural-dot    { display: block; animation-duration: 5s; }
+  .orb-field.speaking .neural-dot    { animation-duration: 3s; } /* only state where the orbit speeds up */
   .orb-field.speaking .neural-wave   { display: block; animation-duration: 8s; }
 
   header {

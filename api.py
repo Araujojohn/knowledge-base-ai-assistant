@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from openai_realtime import create_openai_realtime_session
 from rag import rag_pipeline
 from graph import send_message_to_ai
+import json
 
 load_dotenv()
 
@@ -39,7 +40,7 @@ class RealtimeQueryRequest(BaseModel):
     message: str
     session_id: str
 
-###-----Helpers----- 
+#-----Helpers----- 
 def verify_page_auth(credentials: HTTPBasicCredentials = Depends(security)):
     correct_password = secrets.compare_digest(
         credentials.password, os.getenv("FRONTEND_PASSWORD")
@@ -62,7 +63,7 @@ def verify_whatsapp_chat_token(x_n8n_secret: str = Header()):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-###-----Endpoints----- 
+#-----Endpoints----- 
 @app.get("/health")
 @limiter.limit("10/minute")
 async def health(request: Request):
@@ -75,7 +76,7 @@ async def health(request: Request):
 @limiter.limit("10/minute")
 async def chat(request: Request, message: ChatRequest):
     async for airesponse in send_message_to_ai(message.message, message.reply_to):
-        await avisa.send_to_whatsapp(message=airesponse, number=message.reply_to)
+        await avisa.send_to_whatsapp(message=airesponse["content"], number=message.reply_to)
     return {"message": f"AI Succefully respondend to {message.reply_to}"}
 
 
@@ -100,10 +101,18 @@ async def ragsync(request: Request):
 
 
 
+async def stream_realtime_response(message: str, session_id: str):
+    async for chunk in send_message_to_ai(message, session_id):
+        yield json.dumps(chunk) + "\n"
+
+
 @app.post("/realtime/query", dependencies=[Depends(verify_page_auth)])
 @limiter.limit("10/minute")
 async def realtime_query(request: Request, message: RealtimeQueryRequest):
-    return StreamingResponse(send_message_to_ai(message.message, message.session_id), media_type="text/plain")
+    return StreamingResponse(
+        stream_realtime_response(message.message, message.session_id),
+        media_type="application/x-ndjson",
+    )
 
 
  

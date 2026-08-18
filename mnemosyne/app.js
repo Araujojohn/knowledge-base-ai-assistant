@@ -117,14 +117,15 @@ async function fetchEphemeralKey() {
   return await res.json();
 }
 
-// Calls our own backend, which runs the LangGraph agent (RAG search included)
-// and streams its response. send_message_to_ai() was built for the WhatsApp
-// flow — it also yields "Pensando..." lines and raw tool-call summaries
-// inline with the final answer, with no delimiter between chunks. We forward
-// the full joined stream as the function's result for now; separating the
-// noise from the final answer needs a backend change (structured chunks),
-// which is out of scope here.
-async function queryKnowledgeBase(request, liveLine) {
+// Calls our own backend, which runs the LangGraph agent (RAG search included).
+// The backend streams NDJSON — one {"Type": ..., "content": ...} object per
+// line (see send_message_to_ai() in graph.py). "final_aswer"/"error" chunks
+// are the user-facing answer, shown here and returned as the function-call
+// result. "thinking"/"tool_use" chunks are the agent's internal progress
+// (covers every tool it calls along the way — search, read, write, ...) —
+// not shown here, but forwarded live via onProgress so the caller can relay
+// them to the Realtime API as it goes.
+async function queryKnowledgeBase(request, liveLine, onProgress) {
   const res = await fetch("/realtime/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -136,14 +137,41 @@ async function queryKnowledgeBase(request, liveLine) {
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let full = "";
+  let buffer = "";
+  let finalAnswer = "";
+
+  const consumeLine = (line) => {
+    if (!line) return;
+    let chunk;
+    try {
+      chunk = JSON.parse(line);
+    } catch {
+      return; // malformed/partial line — ignore rather than crash the stream
+    }
+    if (chunk.Type === "final_aswer" || chunk.Type === "error") {
+      finalAnswer += chunk.content;
+      liveLine.textContent = finalAnswer;
+    } else if (chunk.Type === "tool_use") {
+      // "thinking" chunks are dropped here — always the same "Pensando..."
+      // filler (Portuguese, no real content); tool_use carries actual
+      // signal (which tool, which args), worth relaying.
+      onProgress?.(chunk.content);
+    }
+  };
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    full += decoder.decode(value, { stream: true });
-    liveLine.textContent = full;
+    buffer += decoder.decode(value, { stream: true });
+    // NDJSON lines don't line up with read() chunks — buffer until "\n"
+    // and hold back whatever's left (may be a partial line) for next read.
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    lines.forEach(consumeLine);
   }
-  return full;
+  consumeLine(buffer); // flush a final line with no trailing "\n", if any
+
+  return finalAnswer;
 }
 
 async function handleFunctionCall(name, callId, argsJson) {
@@ -161,13 +189,32 @@ async function handleFunctionCall(name, callId, argsJson) {
 
   toolCallInFlight = true;
   setOrbState("thinking");
-  scheduleFade(addLine("tool", `Looking up: ${request}`), "tool");
+  scheduleFade(addLine("tool", `Working on: ${request}`), "tool");
   const liveLine = addLine("assistant", "");
   liveLine.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
 
+  // Relay every tool the agent calls along the way into the Realtime
+  // conversation as it happens, without forcing a response (no
+  // response.create) — the model picks it up on its own next turn. The
+  // "[AGENT PROGRESS]" tag is explained once in openai_realtimeapi_prompt,
+  // not repeated per message — a run with many tool calls would otherwise
+  // resend the same paragraph of framing over and over. Not always a
+  // lookup — the underlying agent can also write/save on request.
+  const sendProgressNote = (toolCallText) => {
+    if (!dc || dc.readyState !== "open") return;
+    dc.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "system",
+        content: [{ type: "input_text", text: `[AGENT PROGRESS] ${toolCallText}` }],
+      },
+    }));
+  };
+
   let output;
   try {
-    output = await queryKnowledgeBase(request, liveLine);
+    output = await queryKnowledgeBase(request, liveLine, sendProgressNote);
   } catch (err) {
     output = `Lookup failed: ${err.message}`;
     liveLine.textContent = output;

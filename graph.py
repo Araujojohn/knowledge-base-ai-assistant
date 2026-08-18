@@ -43,20 +43,20 @@ async def send_message_to_ai(message: str, thread_id):
      for msg in aimessage["messages"]:
       if msg.type == "ai":
        if isinstance(msg.content, str):
-        print(msg.content)
-        yield f"{msg.content}"
+        print({"Type": "final_aswer", "content":f"{msg.content}"})
+        yield {"Type": "final_aswer", "content":f"{msg.content}"}
        else:
         for item in msg.content:
          if item["type"] == "text":
-          print(item["text"])
-          yield f"{item["text"]}"
+          print({"Type": "final_aswer", "content": f"{item["text"]}"})
+          yield {"Type": "final_aswer", "content": f"{item["text"]}"}
          elif item["type"] == "thinking":
-          print("Pensando...\n")
-          yield f"Pensando..."
+          print({"Type": "thinking", "content": f"Pensando..."})
+          yield {"Type": "thinking", "content": f"Pensando..."}
          elif item["type"] == "tool_use":
           print(f"{item["name"]} {item["input"]}\n")
-          yield f"{item["name"]} {item["input"]}"
+          yield {"Type": "tool_use", "content":f"{item["name"]} {item["input"]}"}
   except GraphRecursionError as erro:
-   print("Antingi o Limite de tentativas, quer tentar por um outro caminho?\n")
-   yield f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"
+   print({"type": "error", "content": f"Antingi o Limite de tentativas, quer tentar por um outro caminho?\n"})
+   yield {"Type": "error", "content": f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"}
  

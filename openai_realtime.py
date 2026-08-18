@@ -23,7 +23,8 @@ async def  create_openai_realtime_session() -> str:
             "type": "realtime",
             "model": "gpt-realtime",
             "audio": {
-                "output": {"voice": "shimmer"}
+                "output": {"voice": "shimmer"},
+                "input": {"transcription": {"model": "gpt-4o-mini-transcribe"}}
             },
             "instructions": openai_realtimeapi_prompt,
             "tools": [

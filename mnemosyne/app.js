@@ -79,34 +79,85 @@ function stopSpeakingAnalysis() {
   setOrbState(toolCallInFlight ? "thinking" : (connected ? "active" : ""));
 }
 
-// Transcript reads as floating captions, not a chat log: each line fades in,
-// sticks around for a few seconds, then fades out on its own. Capped at
-// MAX_LINES as a safety net in case several lines land faster than they fade.
-const MAX_LINES = 3;
-const LINE_HOLD_MS = { system: 4000, tool: 4000, assistant: 7000, error: 6000 };
+// Transcript is a persistent conversation log (user/assistant bubbles +
+// tool-activity pills), not floating captions — it scrolls internally
+// instead of growing the page, which is also what stops a long raw agent
+// answer from blowing out the card's layout. Only transient status notices
+// (connected/disconnected/error) still fade — the conversation itself stays.
+const STATUS_HOLD_MS = 5000;
 const LINE_FADE_MS = 600;
 
-function addLine(role, text) {
+function scrollTranscriptToBottom() {
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function addSystemLine(text, role = "system") {
   const p = document.createElement("p");
-  p.className = `line line-${role}`;
+  p.className = `line-${role}`;
   p.textContent = text;
   transcriptEl.appendChild(p);
-  while (transcriptEl.children.length > MAX_LINES) {
-    transcriptEl.firstElementChild.remove();
-  }
+  scrollTranscriptToBottom();
   return p;
 }
 
-// Call once a line's final content is set — starts its fade-out countdown.
-// Kept separate from addLine() because the "assistant" line is created early
-// (to show the typing dots) and keeps being rewritten while streaming; it
-// should only start counting down once the real answer lands.
-function scheduleFade(el, role) {
+function scheduleFade(el) {
   setTimeout(() => {
     if (!el.isConnected) return;
     el.classList.add("line-out");
     setTimeout(() => el.remove(), LINE_FADE_MS);
-  }, LINE_HOLD_MS[role] ?? 5000);
+  }, STATUS_HOLD_MS);
+}
+
+function addUserMessage(text) {
+  const div = document.createElement("div");
+  div.className = "msg msg-user";
+  div.textContent = text;
+  transcriptEl.appendChild(div);
+  scrollTranscriptToBottom();
+  return div;
+}
+
+// Returns the inner .msg-bubble — callers just keep setting .textContent
+// on it as more of the answer streams in (see queryKnowledgeBase()/
+// response.audio_transcript.delta below).
+function addAssistantMessage() {
+  const wrap = document.createElement("div");
+  wrap.className = "msg msg-assistant";
+  wrap.innerHTML =
+    '<div class="msg-avatar"></div>' +
+    '<div class="msg-bubble"><span class="typing-dots"><i></i><i></i><i></i></span></div>';
+  transcriptEl.appendChild(wrap);
+  scrollTranscriptToBottom();
+  return wrap.querySelector(".msg-bubble");
+}
+
+// A tool call in flight, shown as a pulsing/shimmering pill. Click to expand
+// what was asked of it — NOT the tool's actual return value: the backend
+// stream (send_message_to_ai() in graph.py) only ever surfaces "this tool
+// was called with these args", never what it handed back, so that's the
+// most honest thing to show here without a backend change.
+function addActivity(label) {
+  const wrap = document.createElement("div");
+  wrap.className = "activity";
+  wrap.innerHTML =
+    '<div class="activity-pill active">' +
+    '<span class="activity-dot"></span>' +
+    '<span class="activity-label"></span>' +
+    '<span class="activity-chevron">&#9656;</span>' +
+    "</div>" +
+    '<div class="activity-detail"></div>';
+  wrap.querySelector(".activity-label").textContent = label;
+  wrap.querySelector(".activity-detail").textContent = label;
+  wrap.querySelector(".activity-pill").addEventListener("click", () => wrap.classList.toggle("open"));
+  transcriptEl.appendChild(wrap);
+  scrollTranscriptToBottom();
+  return wrap;
+}
+
+function finishActivity(wrap, ok) {
+  const pill = wrap.querySelector(".activity-pill");
+  pill.classList.remove("active");
+  pill.classList.add(ok ? "done" : "error");
 }
 
 async function fetchEphemeralKey() {
@@ -125,7 +176,7 @@ async function fetchEphemeralKey() {
 // (covers every tool it calls along the way — search, read, write, ...) —
 // not shown here, but forwarded live via onProgress so the caller can relay
 // them to the Realtime API as it goes.
-async function queryKnowledgeBase(request, liveLine, onProgress) {
+async function queryKnowledgeBase(request, bubble, onProgress) {
   const res = await fetch("/realtime/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -150,7 +201,8 @@ async function queryKnowledgeBase(request, liveLine, onProgress) {
     }
     if (chunk.Type === "final_aswer" || chunk.Type === "error") {
       finalAnswer += chunk.content;
-      liveLine.textContent = finalAnswer;
+      bubble.textContent = finalAnswer;
+      scrollTranscriptToBottom();
     } else if (chunk.Type === "tool_use") {
       // "thinking" chunks are dropped here — always the same "Pensando..."
       // filler (Portuguese, no real content); tool_use carries actual
@@ -176,7 +228,7 @@ async function queryKnowledgeBase(request, liveLine, onProgress) {
 
 async function handleFunctionCall(name, callId, argsJson) {
   if (name !== KNOWLEDGE_BASE_TOOL) {
-    scheduleFade(addLine("error", `Unknown tool requested: ${name}`), "error");
+    scheduleFade(addSystemLine(`Unknown tool requested: ${name}`, "error"));
     return;
   }
 
@@ -189,18 +241,23 @@ async function handleFunctionCall(name, callId, argsJson) {
 
   toolCallInFlight = true;
   setOrbState("thinking");
-  scheduleFade(addLine("tool", `Working on: ${request}`), "tool");
-  const liveLine = addLine("assistant", "");
-  liveLine.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
+  const bubble = addAssistantMessage();
 
-  // Relay every tool the agent calls along the way into the Realtime
-  // conversation as it happens, without forcing a response (no
-  // response.create) — the model picks it up on its own next turn. The
-  // "[AGENT PROGRESS]" tag is explained once in openai_realtimeapi_prompt,
-  // not repeated per message — a run with many tool calls would otherwise
-  // resend the same paragraph of framing over and over. Not always a
-  // lookup — the underlying agent can also write/save on request.
+  // One activity pill per tool the agent calls along the way — the backend
+  // stream doesn't say when an individual tool call finishes, only when the
+  // whole request does, so every pill opened during this call gets marked
+  // done/error together at the end (see below), not one by one.
+  const activities = [];
+
+  // Relay every tool call into the Realtime conversation as it happens,
+  // without forcing a response (no response.create) — the model picks it
+  // up on its own next turn. The "[AGENT PROGRESS]" tag is explained once
+  // in openai_realtimeapi_prompt, not repeated per message — a run with
+  // many tool calls would otherwise resend the same paragraph of framing
+  // over and over. Not always a lookup — the underlying agent can also
+  // write/save on request.
   const sendProgressNote = (toolCallText) => {
+    activities.push(addActivity(toolCallText));
     if (!dc || dc.readyState !== "open") return;
     dc.send(JSON.stringify({
       type: "conversation.item.create",
@@ -214,12 +271,13 @@ async function handleFunctionCall(name, callId, argsJson) {
 
   let output;
   try {
-    output = await queryKnowledgeBase(request, liveLine, sendProgressNote);
+    output = await queryKnowledgeBase(request, bubble, sendProgressNote);
+    activities.forEach((a) => finishActivity(a, true));
   } catch (err) {
     output = `Lookup failed: ${err.message}`;
-    liveLine.textContent = output;
+    bubble.textContent = output;
+    activities.forEach((a) => finishActivity(a, false));
   }
-  scheduleFade(liveLine, "assistant");
   toolCallInFlight = false;
   setOrbState(connected ? "active" : "");
 
@@ -235,6 +293,13 @@ async function handleFunctionCall(name, callId, argsJson) {
   }));
   dc.send(JSON.stringify({ type: "response.create" }));
 }
+
+// The assistant's own bubble for whatever it's currently saying out loud
+// (plain conversation, not a tool lookup — that path has its own bubble via
+// addAssistantMessage() in handleFunctionCall). Reset to null on
+// response.audio_transcript.done so the next turn starts a fresh bubble.
+let liveAssistantBubble = null;
+let liveAssistantText = "";
 
 function handleServerEvent(raw) {
   let event;
@@ -255,6 +320,24 @@ function handleServerEvent(raw) {
     case "output_audio_buffer.cleared": // cleared on interruption/barge-in
       stopSpeakingAnalysis();
       break;
+    // Requires audio.input.transcription set in the session config
+    // (openai_realtime.py) — without it this event never fires.
+    case "conversation.item.input_audio_transcription.completed":
+      if (event.transcript) addUserMessage(event.transcript);
+      break;
+    // Text version of what the assistant is speaking, streamed incrementally.
+    case "response.audio_transcript.delta":
+      if (!liveAssistantBubble) {
+        liveAssistantBubble = addAssistantMessage();
+        liveAssistantText = "";
+      }
+      liveAssistantText += event.delta;
+      liveAssistantBubble.textContent = liveAssistantText;
+      scrollTranscriptToBottom();
+      break;
+    case "response.audio_transcript.done":
+      liveAssistantBubble = null;
+      break;
     case "response.done": {
       // Safety net: if the buffer events above never fired for some reason,
       // don't leave the orb stuck showing "speaking" forever.
@@ -268,7 +351,7 @@ function handleServerEvent(raw) {
       break;
     }
     case "error":
-      scheduleFade(addLine("error", event.error?.message ?? "Unknown realtime error"), "error");
+      scheduleFade(addSystemLine(event.error?.message ?? "Unknown realtime error", "error"));
       break;
     default:
       break;
@@ -304,7 +387,7 @@ async function connect() {
       connectBtn.disabled = false;
       micBtn.disabled = false;
       micBtn.classList.add("listening");
-      scheduleFade(addLine("system", "Connected. Start talking."), "system");
+      scheduleFade(addSystemLine("Connected. Start talking."));
     });
     dc.addEventListener("close", () => {
       if (connected) disconnect();
@@ -331,7 +414,7 @@ async function connect() {
     });
   } catch (err) {
     setStatus(`Error: ${err.message}`, "error");
-    scheduleFade(addLine("error", err.message), "error");
+    scheduleFade(addSystemLine(err.message, "error"));
     cleanup();
     connectBtn.disabled = false;
   }
@@ -353,6 +436,8 @@ function cleanup() {
   analyser = null;
   levelData = null;
   speakingRaf = null;
+  liveAssistantBubble = null;
+  liveAssistantText = "";
   micBtn.textContent = "Mute";
   micBtn.classList.remove("muted");
   micBtn.classList.remove("listening");
@@ -366,7 +451,7 @@ function disconnect() {
   connectBtn.textContent = "Connect";
   connectBtn.classList.remove("active");
   connectBtn.disabled = false;
-  scheduleFade(addLine("system", "Disconnected."), "system");
+  scheduleFade(addSystemLine("Disconnected."));
 }
 
 connectBtn.addEventListener("click", () => {

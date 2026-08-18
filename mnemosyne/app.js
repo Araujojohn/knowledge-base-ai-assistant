@@ -25,12 +25,21 @@ let sessionId = null;
 let connected = false;
 let toolCallInFlight = false;
 
-// Bubble/element reserved per conversation item id, keyed at
-// conversation.item.created time (true chronological order) so content
-// that arrives later (transcription, streamed text) lands in the right
-// spot instead of wherever it happened to finish. See handleServerEvent's
-// "conversation.item.created" case.
-const itemBubbles = new Map();
+// Bubble ordering: anchored on the most fundamental, longest-standing
+// lifecycle events (VAD speech-start, response-created) instead of
+// conversation.item.created — a fix built on that event didn't hold up in
+// testing, so this drops the dependency entirely rather than guess again.
+//
+// User turns: pushed to a FIFO queue the instant speech starts (VAD),
+// filled in (shifted off, in order) whenever a transcription completes —
+// transcriptions finish in the same order their turns started, so a queue
+// doesn't need item ids to stay correctly matched.
+const pendingUserBubbles = [];
+// Assistant turns: keyed by response_id, reserved the instant generation
+// starts (response.created) — every later event carrying this turn's
+// content (response.output_audio_transcript.delta, response.done) includes
+// response_id, so this one's safe to key by id rather than a queue.
+const responseBubbles = new Map();
 
 function setStatus(text, state) {
   statusText.textContent = text;
@@ -233,7 +242,7 @@ async function queryKnowledgeBase(request, bubble, onProgress) {
   return finalAnswer;
 }
 
-async function handleFunctionCall(itemId, name, callId, argsJson) {
+async function handleFunctionCall(name, callId, argsJson) {
   if (name !== KNOWLEDGE_BASE_TOOL) {
     scheduleFade(addSystemLine(`Unknown tool requested: ${name}`, "error"));
     return;
@@ -248,13 +257,10 @@ async function handleFunctionCall(itemId, name, callId, argsJson) {
 
   toolCallInFlight = true;
   setOrbState("thinking");
-  // Reuse the bubble already reserved by conversation.item.created (correct
-  // chronological slot) instead of appending a new one now — response.done
-  // (which is what triggers this function) can fire well after the item
-  // itself was created, so appending fresh here would land it after
-  // messages that actually came later (see itemBubbles below).
-  let bubble = itemBubbles.get(itemId);
-  if (!bubble) bubble = addAssistantMessage();
+  // response.done (what triggers this) always fires after any spoken part
+  // of the same response already streamed — appending here lands right
+  // after that, which is correct DOM order for this response's own turn.
+  const bubble = addAssistantMessage();
 
   // One activity pill per tool the agent calls along the way — the backend
   // stream doesn't say when an individual tool call finishes, only when the
@@ -340,8 +346,8 @@ function handleServerEvent(raw) {
   // Temporary diagnostic: real arrival order/timing of these events is what
   // the bubble-ordering fix depends on — log it so a mis-ordered transcript
   // can be root-caused from the browser console (F12) instead of guessed at.
-  if (["conversation.item.created", "conversation.item.input_audio_transcription.completed", "response.output_audio_transcript.delta", "response.output_audio_transcript.done", "response.done"].includes(event.type)) {
-    console.log(`[EVT ${performance.now().toFixed(0)}ms]`, event.type, "item:", event.item?.id ?? event.item_id ?? "-", "role:", event.item?.role ?? "-");
+  if (["input_audio_buffer.speech_started", "conversation.item.input_audio_transcription.completed", "response.created", "response.output_audio_transcript.delta", "response.done"].includes(event.type)) {
+    console.log(`[EVT ${performance.now().toFixed(0)}ms]`, event.type, "response:", event.response?.id ?? event.response_id ?? "-");
   }
 
   switch (event.type) {
@@ -356,46 +362,41 @@ function handleServerEvent(raw) {
       stopSpeakingAnalysis();
       break;
 
-    // Fires the instant a turn starts — for a user turn, right when the
-    // mic audio is committed (well before transcription finishes); for an
-    // assistant turn, right when generation starts (before any text/audio
-    // streams). This is what's actually in chronological order — reserve
-    // the bubble's position here, content gets filled in by whichever
-    // event below carries it, matched by item.id.
-    case "conversation.item.created": {
-      const item = event.item;
-      if (!item) break;
-      if (item.type === "message" && item.role === "user") {
-        itemBubbles.set(item.id, addUserMessage("…"));
-      } else if (item.type === "message" && item.role === "assistant") {
-        itemBubbles.set(item.id, addAssistantMessage());
-      } else if (item.type === "function_call") {
-        itemBubbles.set(item.id, addAssistantMessage());
-      }
+    // VAD fires this the instant it detects the user starting to talk —
+    // long before transcription (a separate, slower pipeline) finishes.
+    // Reserve the bubble's slot here so it lands in true chronological
+    // order; content backfills whenever the transcript actually arrives.
+    case "input_audio_buffer.speech_started":
+      pendingUserBubbles.push(addUserMessage("…"));
       break;
-    }
 
     // Requires audio.input.transcription set in the session config
-    // (openai_realtime.py) — without it this event never fires. Often
-    // arrives well after the item itself was created (separate, slower
-    // pipeline) — fills the placeholder reserved above instead of
-    // appending a new bubble at the (wrong, later) point it arrives.
+    // (openai_realtime.py) — without it this event never fires. Transcripts
+    // complete in the same order their turns started, so the oldest pending
+    // placeholder is always the right one to fill — no id matching needed.
     case "conversation.item.input_audio_transcription.completed": {
       if (!event.transcript) break;
-      const bubble = itemBubbles.get(event.item_id);
+      const bubble = pendingUserBubbles.shift();
       if (bubble) bubble.textContent = event.transcript;
-      else addUserMessage(event.transcript); // fallback: item.created never seen
+      else addUserMessage(event.transcript); // fallback: nothing pending
       scrollTranscriptToBottom();
       break;
     }
 
+    // Fires the instant the model starts generating a reply — reserve the
+    // bubble here (before any audio/text exists yet) so it lands in the
+    // right chronological slot regardless of how long generation takes.
+    case "response.created":
+      responseBubbles.set(event.response.id, addAssistantMessage());
+      break;
+
     // Text version of what the assistant is speaking, streamed incrementally
-    // into the bubble reserved by conversation.item.created.
+    // into the bubble reserved by response.created.
     case "response.output_audio_transcript.delta": {
-      let bubble = itemBubbles.get(event.item_id);
+      let bubble = responseBubbles.get(event.response_id);
       if (!bubble) {
-        bubble = addAssistantMessage(); // fallback: item.created never seen
-        itemBubbles.set(event.item_id, bubble);
+        bubble = addAssistantMessage(); // fallback: response.created never seen
+        responseBubbles.set(event.response_id, bubble);
       }
       typewriterAppend(bubble, event.delta);
       break;
@@ -407,7 +408,7 @@ function handleServerEvent(raw) {
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
-          handleFunctionCall(item.id, item.name, item.call_id, item.arguments);
+          handleFunctionCall(item.name, item.call_id, item.arguments);
         }
       }
       break;
@@ -498,7 +499,8 @@ function cleanup() {
   analyser = null;
   levelData = null;
   speakingRaf = null;
-  itemBubbles.clear();
+  pendingUserBubbles.length = 0;
+  responseBubbles.clear();
   micBtn.textContent = "Mute";
   micBtn.classList.remove("muted");
   micBtn.classList.remove("listening");

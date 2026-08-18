@@ -5,6 +5,7 @@ from state import AgentState
 from tools import tools
 import os
 import time
+import traceback
 from dotenv import load_dotenv
 import prompts
 import psycopg
@@ -57,6 +58,8 @@ async def agent_node(state: AgentState):
     try:
      response = await model.ainvoke(mensagens)
     except Exception as error:
+     print(f"agent_node model.ainvoke failed: {error!r}")
+     traceback.print_exc()
      response = AIMessage(content="Desculpa, tive um erro interno ao processar sua solicitação, tente novamente por favor.")
     return {"messages": [response]}
 

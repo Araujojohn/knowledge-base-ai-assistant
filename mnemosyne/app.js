@@ -272,13 +272,17 @@ async function handleFunctionCall(name, callId, argsJson) {
   // done/error together at the end (see below), not one by one.
   const activities = [];
 
-  // Relay every tool call into the Realtime conversation as it happens,
-  // without forcing a response (no response.create) — the model picks it
-  // up on its own next turn. The "[AGENT PROGRESS]" tag is explained once
-  // in openai_realtimeapi_prompt, not repeated per message — a run with
-  // many tool calls would otherwise resend the same paragraph of framing
-  // over and over. Not always a lookup — the underlying agent can also
-  // write/save on request.
+  // Relay every tool call into the Realtime conversation as it happens.
+  // Without a response.create, none of this narrates out loud — a
+  // conversation.item.create alone just adds silent context; nothing makes
+  // the model actually generate speech to say it. The response that
+  // decided to call this tool has already finished (response.done is what
+  // triggers handleFunctionCall), so the slate's clear to prompt one new
+  // reply here. Only do this for the first note in this lookup — one quick
+  // "let me check..." is enough, forcing a fresh response.create per
+  // subsequent tool would talk over itself. The "[AGENT PROGRESS]" tag is
+  // explained once in openai_realtimeapi_prompt, not repeated per message.
+  let narratedOnce = false;
   const sendProgressNote = (toolCallText) => {
     activities.push(addActivity(toolCallText));
     if (!dc || dc.readyState !== "open") return;
@@ -290,6 +294,10 @@ async function handleFunctionCall(name, callId, argsJson) {
         content: [{ type: "input_text", text: `[AGENT PROGRESS] ${toolCallText}` }],
       },
     }));
+    if (!narratedOnce) {
+      narratedOnce = true;
+      dc.send(JSON.stringify({ type: "response.create" }));
+    }
   };
 
   let output;

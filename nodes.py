@@ -63,10 +63,9 @@ def safe_message_window(messages, n=30):
 
     Um corte cego por quantidade pode deixar uma AIMessage com tool_calls como
     primeira mensagem da janela — sem o turno de usuario (ou de resposta de
-    tool) que precisa vir antes dela. O Anthropic tolera isso; o Gemini rejeita
-    (400 INVALID_ARGUMENT: "function call turn comes immediately after a user
-    turn or after a function response turn"). Andar pra tras ate a ultima
-    HumanMessage garante um ponto de corte valido pra qualquer provider.
+    tool) que precisa vir antes dela. O Anthropic tolera isso; o Gemini rejeita 
+    Andar pra tras ate a ultima HumanMessage garante um ponto de corte valido
+    pra qualquer provider.
     """
     start = max(0, len(messages) - n)
     while start > 0 and not isinstance(messages[start], HumanMessage):

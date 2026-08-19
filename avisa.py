@@ -8,7 +8,7 @@ load_dotenv()
 
 avisa_token = os.getenv("AVISA_API_TOKEN")
 
-async def send_to_whatsapp(message: str, number: int):
+async def send_to_whatsapp(message: dict, number: int):
 
  url = "https://www.avisaapi.com.br/api/actions/sendMessage"
 

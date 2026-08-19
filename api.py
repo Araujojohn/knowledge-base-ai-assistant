@@ -63,7 +63,14 @@ def verify_whatsapp_chat_token(x_n8n_secret: str = Header()):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+async def stream_realtime_response(message: str, session_id: str):
+    async for chunk in send_message_to_ai(message, session_id):
+        yield json.dumps(chunk) + "\n"
+
+
+
 #-----Endpoints----- 
+
 @app.get("/health")
 @limiter.limit("10/minute")
 async def health(request: Request):
@@ -99,11 +106,6 @@ async def ragsync(request: Request):
         raise HTTPException(status_code=401, detail="Assinatura inválida")
 
 
-
-
-async def stream_realtime_response(message: str, session_id: str):
-    async for chunk in send_message_to_ai(message, session_id):
-        yield json.dumps(chunk) + "\n"
 
 
 @app.post("/realtime/query", dependencies=[Depends(verify_page_auth)])

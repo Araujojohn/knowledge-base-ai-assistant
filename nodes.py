@@ -5,6 +5,7 @@ from state import AgentState
 from tools import tools
 import os
 import time
+import asyncio
 import traceback
 from dotenv import load_dotenv
 import prompts
@@ -36,14 +37,19 @@ def check_ai_configs(conn):
 
 cache = {"model": None, "checked_at": 0}
 
-def check_if_model_changed():
+def fetch_model_config():
+    conn = connect_to_database()
+    configs = check_ai_configs(conn)
+    conn.close()
+    return configs
+
+
+async def check_if_model_changed():
     """Checa a cada 5min, se o modelo de IA foi trocado no Banco"""
     last_search = cache["checked_at"]
     seconds_passed = time.time() - last_search
     if seconds_passed > 300:
-       conn = connect_to_database()
-       configs = check_ai_configs(conn)
-       conn.close()
+       configs = await asyncio.to_thread(fetch_model_config)
        cache["model"] = init_chat_model(configs).bind_tools(tools)
        cache["checked_at"] = time.time()
     return cache["model"]
@@ -69,7 +75,7 @@ def safe_message_window(messages, n=30):
 
 async def agent_node(state: AgentState):
     mensagens = [("system", system_prompt)] + safe_message_window(state["messages"])
-    model = check_if_model_changed()
+    model = await check_if_model_changed()
     try:
      response = await model.ainvoke(mensagens)
     except Exception as error:

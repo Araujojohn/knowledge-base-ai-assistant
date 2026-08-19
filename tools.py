@@ -16,6 +16,28 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 owner = os.getenv("GITHUB_OWNER")
 repo = os.getenv("GITHUB_REPO")
 
+openai_api_key = os.getenv("OPENAI_API_TOKEN")
+reranker_api_key = os.getenv("COHERE_API_KEY")
+
+
+
+##---Helpers---
+openai_client = None
+def get_openai_client():
+    """Return the cached OpenAI client, creating it on first call."""
+    global openai_client
+    if openai_client is None:
+        openai_client = OpenAI(api_key=openai_api_key)
+    return openai_client
+
+reranker_client = None
+def get_reranker_client():
+    """Return the cached Cohere client, creating it on first call."""
+    global reranker_client
+    if reranker_client is None:
+        reranker_client = cohere.ClientV2(api_key=reranker_api_key)
+    return reranker_client
+
 def get_db_connection():
     return psycopg.connect(
         host = os.getenv("DB_HOST"),
@@ -25,16 +47,15 @@ def get_db_connection():
         port = os.getenv("DB_PORT")
     )
 
-openai_api_key = os.getenv("OPENAI_API_TOKEN")
 
-reranker_api_key = os.getenv("COHERE_API_KEY")
 
 
 @tool
 async def read(path: str) -> str:
     """
     Lê um arquivo do github a partir da URL e retorna o conteúdo em texto.
-    use quando precisar ler um arquivo na base de conhecimento
+    Use só quando já souber o caminho exato do arquivo (ex: veio do CLAUDE.md,
+    do `search`, ou o usuário citou o nome). Não chute caminho.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 
@@ -61,7 +82,8 @@ async def list_files(
 
     """
     Lista os arquivos de uma pasta e retorna uma lista com os caminhos.
-    use quando precisar ver ou encontrar os arquivo na base de conhecimento
+    Use só quando já souber a pasta específica que precisa navegar. Não sabe
+    o caminho? Leia o CLAUDE.md primeiro — não chute pasta.
     deixar o parametro "path" vazio mostra a raiz do repo
     """
 
@@ -167,15 +189,14 @@ def search(
   query: str,
   ):
   """
-  Busca Hibrida, use quando quiser encontrar alguma informação
-  buscando rapidamente em todos os textos e arquivos (Busca Semantica via embeddings + keywords via fts + reranking)
+  Busca Hibrida — ferramenta PADRÃO pra qualquer necessidade de informação, tenta essa
+  primeiro, mesmo pra perguntas amplas (Busca Semantica via embeddings + keywords via fts + reranking)
   DICA: Enriqueça a query, tanto sematicamente como com keywords
   """
   conn = get_db_connection()
   cur = conn.cursor()
   try:
-   client = OpenAI(api_key=openai_api_key)
-   response = client.embeddings.create(
+   response = get_openai_client().embeddings.create(
       model="text-embedding-3-small",
       input=query
       )
@@ -235,9 +256,8 @@ def search(
      documents.append(id_to_content.get(id))
 
    #enviar ao cohere rerank api
-   co = cohere.ClientV2(api_key=reranker_api_key)
 
-   response = co.rerank(
+   response = get_reranker_client().rerank(
      model="rerank-v3.5",
      query=query,
      documents=documents,

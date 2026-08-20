@@ -225,7 +225,7 @@ def search(
        ORDER BY ts_rank(content_tsv, plainto_tsquery('simple', %s)) DESC
        LIMIT 20
       )
-      SELECT chunks.id, chunks.header, chunks.content, files.path, SUM(1.0 / (60 + combined.rank)) AS rfs_score
+      SELECT chunks.header, chunks.content, files.path, SUM(1.0 / (60 + combined.rank)) AS rfs_score
       FROM (
        SELECT id, rank FROM vector_rank
        UNION ALL
@@ -244,7 +244,7 @@ def search(
   
    documents = []
    for chunk in top_20_chunks_by_rfs:
-    documents.append(chunk[2])
+    documents.append(chunk[1])
 
 
    response = get_reranker_client().rerank(

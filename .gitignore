@@ -5,5 +5,7 @@ __pycache__/
 venv/
 .claude/
 CLAUDE.md
+JOURNAL.md
+LEARNINGS.md
 get_gh_files example
 readme

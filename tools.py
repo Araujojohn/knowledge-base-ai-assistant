@@ -192,7 +192,13 @@ def search(
   Busca Hibrida — ferramenta PADRÃO pra qualquer necessidade de informação, tenta essa
   primeiro, mesmo pra perguntas amplas (Busca Semantica via embeddings + keywords via fts + reranking)
   DICA: Enriqueça a query, tanto sematicamente como com keywords
+  #Embeda pergunta
+  #envia query ao postgress pegando top 20 chunks por similaridade a query
+  #Converter query em ftsquery e buscar top 20 por FTS rank
+  #Une os dois Rankings
+  #envia ao cohere rerank api
   """
+
   conn = get_db_connection()
   cur = conn.cursor()
   try:
@@ -202,89 +208,56 @@ def search(
       )
    vectorized_query = response.data[0].embedding
 
-   #Embedar pergunta
-   #enviar query ao postgress pegando top 20 chunks por similaridade a query
-   cur.execute(
-     """
-     SELECT id, content
-     FROM knowledge_base_ai.chunks
-     ORDER BY embedding <=> %s::vector
-     LIMIT 20
-     """,
-     (vectorized_query,)
-     )
 
-   top_20_by_vector = cur.fetchall()
-
-   # Converter query em tsquery e buscar top 20 por FTS rank
+   ##Query Unificada Busca top 20 por similaridade + FTS_score
    cur.execute(
-       """
-       SELECT id, content
+      """
+      WITH vector_rank AS (
+       SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> %s::vector) AS rank
+       FROM knowledge_base_ai.chunks
+       ORDER BY embedding <=> %s::vector
+       LIMIT 20
+      ),
+      fts_rank AS(
+       SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank(content_tsv, plainto_tsquery('simple', %s)) DESC) AS rank
        FROM knowledge_base_ai.chunks
        WHERE content_tsv @@ plainto_tsquery('simple', %s)
        ORDER BY ts_rank(content_tsv, plainto_tsquery('simple', %s)) DESC
        LIMIT 20
-       """,
-       (query, query)
-       )
+      )
+      SELECT chunks.id, chunks.header, chunks.content, files.path, SUM(1.0 / (60 + combined.rank)) AS rfs_score
+      FROM (
+       SELECT id, rank FROM vector_rank
+       UNION ALL
+       SELECT id, rank FROM fts_rank
+       ) AS combined
+       JOIN knowledge_base_ai.chunks ON chunks.id = combined.id
+       JOIN knowledge_base_ai.files ON chunks.file_id = files.id
+       GROUP BY chunks.id, chunks.header, chunks.content, files.path
+       ORDER BY rfs_score DESC
+       LIMIT 20;
+      """,
+      (vectorized_query, vectorized_query, query, query, query)
+   )
 
-   top_20_by_keyword = cur.fetchall()
-
-   #unificar em indice unico (RRF)
-   id_to_rfs_rank = {}
-   id_to_content = {}
-
-   for indice, chunk in enumerate(top_20_by_vector, 1):
-     id_to_rfs_rank[chunk[0]] = id_to_rfs_rank.get(chunk[0], 0) + 1/(60 + indice)
-     id_to_content[chunk[0]] = chunk[1]
-
-   for indice, chunk in enumerate(top_20_by_keyword, 1):
-     id_to_rfs_rank[chunk[0]] = id_to_rfs_rank.get(chunk[0], 0) + 1/(60 + indice)
-     id_to_content[chunk[0]] = chunk[1]
-
-   #FUNÇÃO que recebe uma tupla (chunk) e traz o item na segunda posição (score)
-   #apenas para ser usada no sorted logo abaixo, senão traria id
-   def get_rfs_score(chunk):
-    return chunk[1]
-
-   top20_rfs_ids = sorted(id_to_rfs_rank.items(), key=get_rfs_score, reverse=True)[:20]
-
-   top20_id_to_chunks_by_rfs = []
+   top_20_chunks_by_rfs = cur.fetchall()
+  
    documents = []
-   for id, score in top20_rfs_ids:
-     top20_id_to_chunks_by_rfs.append({"id": id, "content": id_to_content.get(id)})
-     documents.append(id_to_content.get(id))
+   for chunk in top_20_chunks_by_rfs:
+    documents.append(chunk[2])
 
-   #enviar ao cohere rerank api
 
    response = get_reranker_client().rerank(
-     model="rerank-v3.5",
-     query=query,
-     documents=documents,
-     top_n=5,
+    model="rerank-v3.5",
+    query=query,
+    documents=documents,
+    top_n=5,
    )
-   top_5_k = []
 
-   for result in response.results:
-     top_5_k.append(top20_id_to_chunks_by_rfs[result.index])
+   top_5_documents = [top_20_chunks_by_rfs[result.index] for result in response.results]
 
-   top_5_ids = []
-   for chunk in top_5_k:
-     top_5_ids.append(chunk["id"])
-
-   cur.execute(
-      """
-      SELECT chunks.header, chunks.content, files.path
-      FROM knowledge_base_ai.chunks
-      JOIN knowledge_base_ai.files ON chunks.file_id = files.id
-      WHERE chunks.id = ANY(%s)
-      """,
-      (top_5_ids,)
-     )
-
-   result = cur.fetchall()
    conn.commit()
-   return result
+   return top_5_documents
   finally:
    conn.close()
 

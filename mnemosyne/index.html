@@ -2,23 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a1520" />
 <title>Mnemosyne</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* Design tokens shared with Ads Analyst Agent / Meta Ads Bulk Upload —
-     see Ads Analyst Agent/docs/design/visual-identity.md (source of truth). */
+  /* ─────────────────────────────────────────────────────────────
+     Tokens. Two layers on purpose:
+
+     (1) PLATFORM — the shared Trustwise AI design system, so this page
+         reads as the same product family as Ads Analyst Agent / Meta Ads
+         Bulk Upload. Source of truth:
+         Ads Analyst Agent/docs/design/visual-identity.md. Don't retune.
+
+     (2) MNEMOSYNE — semantics layered on top, named for what this
+         product actually is: a listening instrument over a night sky.
+         --sky-N is elevation *by translucency*, never solid fill — the
+         aurora underneath has to read through the chrome, that's the
+         page's identity. Colour carries meaning here:
+           signal (blue)   = live audio / spoken turns
+           recall (purple) = something pulled out of the knowledge base
+           wait (amber) · live (green) · lost (red) = link state
+     ───────────────────────────────────────────────────────────── */
   :root {
+    /* (1) platform */
     --bg: #0a1520;
     --bg-gradient: linear-gradient(160deg, #0c1a2e 0%, #0a1520 40%, #08101c 100%);
-    --glass: rgba(10, 26, 52, 0.82);
-    --glass-border: rgba(79, 142, 247, 0.18);
-    --glass-hover: rgba(20, 50, 100, 0.55);
-    --surface: rgba(10, 26, 52, 0.78);
-    --surface-2: rgba(35, 80, 150, 0.14);
-    --border: rgba(79, 142, 247, 0.14);
     --accent: #4f8ef7;
     --accent-hover: #6ba3ff;
     --accent-active: #2563eb;
@@ -31,35 +42,67 @@
     --text-dim: #94a8b8;
     --text-muted: #6b8399;
     --gradient-action: linear-gradient(135deg, #4f8ef7, #2563eb);
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-full: 9999px;
-    --shadow-md: 0 4px 16px rgba(5, 15, 35, 0.35);
-    --shadow-lg: 0 8px 32px rgba(5, 15, 35, 0.5);
-    --glow-accent: 0 0 24px rgba(79, 142, 247, 0.35);
     --font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Consolas, "Fira Code", monospace;
+
+    /* (2) mnemosyne — elevation over the sky */
+    --sky-1: rgba(8, 20, 38, 0.58);   /* rail, topbar, dock — the chrome  */
+    --sky-2: rgba(12, 30, 58, 0.62);  /* bubbles, cards                    */
+    --sky-3: rgba(16, 38, 70, 0.80);  /* expanded detail, raw payloads     */
+    --sky-inset: rgba(4, 12, 24, 0.45); /* inset wells — receive content   */
+
+    --edge: rgba(120, 170, 235, 0.11);      /* standard hairline           */
+    --edge-soft: rgba(120, 170, 235, 0.07); /* softer separation           */
+    --edge-strong: rgba(120, 170, 235, 0.20);
+    --edge-focus: rgba(79, 142, 247, 0.55);
+
+    --signal: var(--accent);
+    --recall: var(--accent-2);
+    --recall-line: rgba(167, 139, 250, 0.6);
+    --recall-wash: rgba(167, 139, 250, 0.09);
+
+    --r-sm: 8px;
+    --r-md: 11px;
+    --r-lg: 16px;
+    --r-full: 9999px;
+
+    --rail-w: 244px;
+    --topbar-h: 56px;
   }
 
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-
+  html { height: 100%; }
   body {
+    height: 100%;
     margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow-x: hidden;
+    overflow: hidden;              /* the transcript scrolls, not the page */
     background: var(--bg);
     background-image: var(--bg-gradient);
     color: var(--text);
     font-family: var(--font-primary);
-    padding: 24px;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* Atmospheric texture — static gradient, zero animation cost */
+  ::selection { background: rgba(79, 142, 247, 0.3); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(79, 142, 247, 0.15); border-radius: var(--r-full); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(79, 142, 247, 0.3); }
+  * { scrollbar-width: thin; scrollbar-color: rgba(79, 142, 247, 0.18) transparent; }
+
+  :focus-visible {
+    outline: 2px solid var(--edge-focus);
+    outline-offset: 2px;
+  }
+
+  /* ── Background: atmosphere, aurora, beam, starfield.
+     Unchanged from the previous build — it's the page's identity and it
+     already carries the perf guardrails (reduced-motion, tab-hidden
+     pause, 20fps canvas cap, fewer stars under 600px). ── */
   body::before {
     content: "";
     position: fixed;
@@ -72,9 +115,6 @@
       radial-gradient(ellipse 45% 40% at 55% 45%, rgba(180, 215, 255, 0.06) 0%, transparent 50%);
   }
 
-  /* ── Aurora + light beam (breathing background), adapted from the
-     Ads Analyst / Bulk Upload shared design system. GPU-friendly:
-     only transform/opacity animate. ── */
   .light-beam {
     position: fixed;
     inset: 0;
@@ -138,10 +178,10 @@
     z-index: -1;
   }
 
-  /* Performance guardrails — required whenever aurora/beam/canvas are used */
   @media (prefers-reduced-motion: reduce) {
     .aurora-layer, .light-beam,
-    .neural-core, .neural-ring, .neural-ring-2, .neural-dot, .neural-wave { animation: none !important; }
+    .neural-core, .neural-ring, .neural-ring-2, .neural-dot, .neural-wave,
+    .pulse, .recall[data-state="running"]::before, .step.running .step-dot { animation: none !important; }
   }
   body.bg-anim-paused .aurora-layer,
   body.bg-anim-paused .light-beam,
@@ -150,77 +190,745 @@
   body.bg-anim-paused .neural-ring-2,
   body.bg-anim-paused .neural-dot,
   body.bg-anim-paused .neural-wave,
+  body.bg-anim-paused .pulse,
   body.bg-anim-paused #mic-btn.listening { animation-play-state: paused !important; }
 
-  /* ── No boxed panel — content sits directly on the aurora/starfield, like
-     it's floating. A soft ambient glow (no hard edge) keeps it grounded
-     instead of a glass card, and text-shadow (inherited) keeps everything
-     legible over the moving background underneath. ── */
-  .card {
+  /* ══════════════════════════════════════════════════════════════
+     SHELL — rail + stage. Fixed viewport height, internal scroll.
+     100dvh (not 100vh) because mobile browser chrome resizes the
+     viewport; vh would push the dock under the URL bar.
+     ══════════════════════════════════════════════════════════════ */
+  .shell {
     position: relative;
     z-index: 1;
-    width: 100%;
-    max-width: 440px;
-    padding: 34px 28px;
-    text-shadow: 0 2px 14px rgba(4, 10, 22, 0.65);
-  }
-  .card::before {
-    content: "";
-    position: absolute;
-    inset: -50px -30px;
-    z-index: -1;
-    background: radial-gradient(ellipse 65% 60% at 50% 38%, rgba(20, 46, 92, 0.32) 0%, rgba(12, 28, 55, 0.16) 45%, transparent 75%);
-    filter: blur(8px);
-    pointer-events: none;
+    display: grid;
+    grid-template-columns: var(--rail-w) 1fr;
+    height: 100dvh;
   }
 
-  /* ── AI presence orb — adapted from Ads Analyst Agent's neural-orb
-     (Arquitetura/public/index.html), trimmed: no tendril SVG layer (their
-     own comments flag it as the biggest GPU cost measured in prod there —
-     skipped outright here rather than ported-then-disabled). ── */
-  .orb-field {
-    position: relative;
-    width: 84px;
-    height: 84px;
-    margin: 0 auto 12px;
+  /* ── Rail ─────────────────────────────────────────────────────
+     Same sky as the canvas (never a different colour — that would
+     split the page into "sidebar world" and "content world"); a
+     hairline does all the separating. backdrop-filter lives only
+     here, on the topbar and on the dock — the design system's rule,
+     it's the heaviest GPU cost on the page. ── */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--sky-1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid var(--edge);
+  }
+
+  .rail-head {
     display: flex;
     align-items: center;
+    gap: 11px;
+    height: var(--topbar-h);
+    flex: none;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--edge-soft);
+  }
+  .mark {
+    width: 26px; height: 26px;
+    flex: none;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, var(--accent-hover) 0%, var(--accent) 52%, rgba(37, 99, 235, 0.25) 100%);
+    box-shadow: 0 0 14px var(--accent-glow), inset 0 0 0 1px rgba(255,255,255,.12);
+    position: relative;
+  }
+  .mark::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 1px dashed rgba(79, 142, 247, 0.28);
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    margin: 0;
+    line-height: 1.1;
+  }
+  .wordmark span {
+    display: block;
+    font-family: var(--font-primary);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .rail-nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .nav-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 8px 10px 6px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-left: 2px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+  }
+  .nav-item svg { width: 16px; height: 16px; flex: none; opacity: .85; }
+  .nav-item:hover:not(:disabled) { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+  .nav-item[aria-selected="true"] {
+    background: rgba(79, 142, 247, 0.1);
+    border-left-color: var(--accent);
+    color: var(--accent-hover);
+    font-weight: 600;
+  }
+  .nav-item:disabled { color: var(--text-muted); cursor: not-allowed; opacity: .7; }
+  .nav-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: rgba(255,255,255,.05);
+    border-radius: var(--r-full);
+    padding: 1px 7px;
+    min-width: 20px;
+    text-align: center;
+  }
+  .nav-item[aria-selected="true"] .nav-count { background: rgba(79,142,247,.16); color: var(--accent-hover); }
+  .badge-soon {
+    margin-left: auto;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-full);
+    padding: 2px 7px;
+  }
+
+  .rail-foot {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--edge-soft);
+  }
+  .stat { padding: 12px 8px; text-align: center; }
+  .stat + .stat { border-left: 1px solid var(--edge-soft); }
+  .stat-value {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .stat-label {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+
+  /* ── Stage ───────────────────────────────────────────────────── */
+  .stage {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .topbar {
+    flex: none;
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    background: var(--sky-1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--edge);
+  }
+  .topbar .menu-btn { display: none; }
+  .topbar-titles { min-width: 0; }
+  .topbar-titles h1 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.25;
+  }
+  .topbar-titles p {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Link state — same state machine as the orb, a second expression of it. */
+  .link-state {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    padding: 5px 11px 5px 9px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-full);
+    background: rgba(255,255,255,.03);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+  .pulse {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--text-muted);
+    transition: background 0.2s ease;
+  }
+  .pulse.connecting { background: var(--yellow); animation: blink 1.2s ease-in-out infinite; }
+  .pulse.connected  { background: var(--green);  animation: haloGreen 2.4s ease-in-out infinite; }
+  .pulse.thinking   { background: var(--accent-2); animation: blink 0.9s ease-in-out infinite; }
+  .pulse.error      { background: var(--red); }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes haloGreen {
+    0%, 100% { box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
+    50%      { box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
+  }
+
+  /* Views stay mounted and stacked so switching tabs never loses the
+     transcript's scroll position or a half-typed answer. */
+  .views { position: relative; flex: 1; min-height: 0; }
+  .view { position: absolute; inset: 0; display: none; flex-direction: column; min-height: 0; }
+  .view.is-active { display: flex; }
+
+  /* ── Transcript ──────────────────────────────────────────────── */
+  .transcript {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 22px 24px 10px;
+  }
+  .transcript-inner {
+    width: 100%;
+    max-width: 760px;         /* a chat line 1600px wide is unreadable */
+    margin: auto auto 0;      /* auto top margin: content stacks up from the
+                                 bottom while short, collapses once it fills */
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .empty {
+    margin: auto 0;
+    padding: 44px 8px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+  .empty-glyph {
+    width: 46px; height: 46px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    border: 1px dashed rgba(79, 142, 247, 0.3);
+    display: grid;
+    place-items: center;
+  }
+  .empty-glyph::after {
+    content: "";
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .empty h2 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+  }
+  .empty p { margin: 0 auto; max-width: 380px; font-size: 12.5px; line-height: 1.6; }
+
+  .msg, .recall, .line-system, .line-error { overflow-wrap: break-word; word-break: break-word; }
+
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-6px); }
+  }
+
+  .line-system, .line-error {
+    align-self: center;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin: 0;
+    animation: riseIn 0.3s ease both;
+  }
+  .line-error { color: var(--red); }
+  .line-out { animation: fadeOut 0.5s ease forwards; }
+
+  /* Spoken turns — blue register. */
+  .msg { font-size: 13.5px; line-height: 1.55; animation: riseIn 0.3s ease both; }
+  .msg-user {
+    align-self: flex-end;
+    max-width: 74%;
+    padding: 9px 14px;
+    border-radius: var(--r-md);
+    border-bottom-right-radius: 4px;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.26), rgba(30, 90, 150, 0.3));
+    border: 1px solid rgba(79, 142, 247, 0.26);
+  }
+  .msg-assistant { align-self: flex-start; max-width: 88%; display: flex; gap: 9px; }
+  .msg-avatar {
+    flex: none;
+    width: 20px; height: 20px;
+    margin-top: 3px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .msg-bubble {
+    padding: 9px 14px;
+    border-radius: var(--r-md);
+    border-bottom-left-radius: 4px;
+    background: var(--sky-2);
+    border: 1px solid var(--edge);
+  }
+
+  /* ── Recall — the signature. Purple register, its own lane.
+     This is where a knowledge-base lookup lives: what was asked, which
+     tools ran, and (collapsed) the raw text the LangGraph agent handed
+     back. It is deliberately NOT a .msg-assistant bubble — that text is
+     the tool's output, not something Mnemosyne said, and rendering it
+     as her speech was the single most confusing thing about the old UI.
+     Mono type + the strand on the left make the register readable at a
+     glance, before you read a word. ── */
+  .recall {
+    align-self: stretch;
+    position: relative;
+    padding-left: 16px;
+    animation: riseIn 0.3s ease both;
+  }
+  .recall::before {
+    content: "";
+    position: absolute;
+    left: 4px; top: 4px; bottom: 4px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--recall-line);
+    opacity: .8;
+  }
+  .recall[data-state="running"]::before {
+    opacity: 1;
+    background: linear-gradient(180deg, transparent 0%, var(--recall) 45%, var(--recall) 55%, transparent 100%);
+    background-size: 100% 220%;
+    animation: strandFlow 1.5s linear infinite;
+  }
+  @keyframes strandFlow {
+    from { background-position: 0 -120%; }
+    to   { background-position: 0 120%; }
+  }
+  .recall[data-state="failed"]::before { background: var(--red); opacity: .8; }
+
+  .recall-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-dim);
+    font-family: var(--font-primary);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+  }
+  .recall-head svg { width: 13px; height: 13px; flex: none; color: var(--recall); }
+  .recall-title { color: var(--recall); }
+  .recall-status { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+  .recall[data-state="failed"] .recall-status { color: var(--red); }
+  .recall-tools, .recall-time {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .recall-tools { margin-left: auto; }
+  .recall-caret {
+    flex: none;
+    color: var(--text-muted);
+    transition: transform 0.18s ease;
+  }
+  .recall-caret svg { width: 12px; height: 12px; }
+  .recall.open .recall-caret { transform: rotate(90deg); }
+  .recall-head:hover .recall-title, .recall-head:hover .recall-caret { color: var(--accent-2); }
+
+  .recall-ask {
+    margin: 6px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .recall-steps { display: none; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .recall[data-state="running"] .recall-steps,
+  .recall.open .recall-steps { display: flex; }
+  .step {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+  .step-dot {
+    flex: none;
+    width: 5px; height: 5px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    align-self: flex-start;
+  }
+  .step.running .step-dot { background: var(--recall); animation: blink 1s ease-in-out infinite; }
+  .step.done .step-dot { background: var(--green); }
+  .step.failed .step-dot { background: var(--red); }
+  .step-text { min-width: 0; overflow-wrap: anywhere; }
+
+  /* Collapsed by default: the agent's raw return is available, never
+     presented as Mnemosyne's voice. Open it when you want the receipt. */
+  .recall-body { display: none; margin-top: 9px; }
+  .recall.open .recall-body { display: block; }
+  .recall-body-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+  }
+  .recall-answer {
+    padding: 10px 12px;
+    border: 1px solid var(--edge);
+    border-left: 2px solid var(--recall-line);
+    border-radius: var(--r-sm);
+    background: var(--sky-3);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .typing-dots { display: inline-flex; gap: 4px; align-items: center; height: 1.55em; }
+  .typing-dots i {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent-hover);
+    animation: typingBounce 1.1s ease-in-out infinite;
+  }
+  .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30%           { opacity: 1;   transform: translateY(-3px); }
+  }
+
+  /* ── Panels (Recall log · Session · About) ───────────────────── */
+  .panel { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 24px 24px; }
+  .panel-inner { max-width: 760px; margin: 0 auto; }
+  .panel h2 {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    margin: 0 0 12px;
+  }
+  .panel h2 + p { margin-top: -6px; }
+  .panel p { font-size: 13px; line-height: 1.65; color: var(--text-dim); margin: 0 0 14px; }
+  .panel section + section { margin-top: 26px; }
+
+  .card {
+    border: 1px solid var(--edge);
+    border-radius: var(--r-lg);
+    background: var(--sky-2);
+    overflow: hidden;
+  }
+  .kv {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 11px 16px;
+    font-size: 12.5px;
+  }
+  .kv + .kv { border-top: 1px solid var(--edge-soft); }
+  .kv dt { flex: none; width: 132px; color: var(--text-muted); font-weight: 500; }
+  .kv dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: 62px 1fr auto;
+    gap: 14px;
+    align-items: baseline;
+    padding: 11px 16px;
+    font-size: 12px;
+  }
+  .log-row + .log-row { border-top: 1px solid var(--edge-soft); }
+  .log-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .log-body { min-width: 0; }
+  .log-tool {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--accent-2);
+    display: block;
+  }
+  .log-args {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow-wrap: anywhere;
+  }
+  .log-state {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-full);
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .log-state[data-state="running"] { color: var(--accent-2); border-color: rgba(167,139,250,.32); }
+  .log-state[data-state="done"]    { color: var(--green);    border-color: rgba(16,185,129,.3); }
+  .log-state[data-state="failed"]  { color: var(--red);      border-color: rgba(248,113,113,.32); }
+
+  .panel-empty {
+    padding: 34px 16px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .steps-list { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+  .steps-list li {
+    counter-increment: s;
+    position: relative;
+    padding: 0 0 16px 34px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .steps-list li::before {
+    content: counter(s);
+    position: absolute;
+    left: 0; top: 0;
+    width: 22px; height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--edge-strong);
+    background: rgba(79, 142, 247, 0.08);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-hover);
+  }
+  .steps-list li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 11px; top: 26px; bottom: 4px;
+    width: 1px;
+    background: var(--edge);
+  }
+  .steps-list strong { color: var(--text); font-weight: 600; }
+
+  .legend { display: flex; flex-direction: column; gap: 10px; }
+  .legend-row { display: flex; align-items: flex-start; gap: 11px; font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .legend-swatch { flex: none; width: 3px; height: 34px; border-radius: 2px; margin-top: 1px; }
+  .legend-row b { display: block; color: var(--text); font-weight: 600; font-size: 12.5px; }
+
+  /* ── Dock — presence + controls together. The orb lives here, not in
+     a header: it's the thing that listens and speaks, so it belongs
+     where you act, and it stays visible on every view and breakpoint. ── */
+  .dock {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 20px calc(13px + env(safe-area-inset-bottom));
+    background: var(--sky-1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--edge);
+  }
+  .dock-hint {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-align: right;
+    line-height: 1.4;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    --speak-level: 0; /* 0..1, driven by JS from the remote audio track while speaking */
+    gap: 8px;
+    height: 40px;
+    padding: 0 20px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-family: var(--font-primary);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease, opacity 0.15s ease;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primary { background: var(--gradient-action); border-color: transparent; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--gradient-action); transform: translateY(-1px); box-shadow: 0 0 24px var(--accent-glow); }
+  .btn-danger {
+    background: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.42);
+    color: var(--red);
+  }
+  .btn-danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.16); box-shadow: 0 0 20px rgba(248, 113, 113, 0.2); }
+
+  .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 40px; height: 40px;
+    flex: none;
+    padding: 0;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.15s ease;
+  }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #mic-btn { border-radius: var(--r-full); width: 42px; height: 42px; }
+  #mic-btn .icon-mic-off { display: none; }
+  #mic-btn.muted { background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.42); color: var(--red); }
+  #mic-btn.muted .icon-mic { display: none; }
+  #mic-btn.muted .icon-mic-off { display: block; }
+  #mic-btn.listening { border-color: var(--accent); color: var(--accent-hover); animation: micPulse 1.8s ease-in-out infinite; }
+  @keyframes micPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 142, 247, 0.35); }
+    50%      { box-shadow: 0 0 0 6px rgba(79, 142, 247, 0); }
+  }
+
+  /* ── Presence orb (dock-mounted) ─────────────────────────────── */
+  .orb-field {
+    position: relative;
+    width: 46px; height: 46px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    --speak-level: 0;
     transition: transform 0.18s ease-out;
   }
-  .neural-orb { position: relative; width: 46px; height: 46px; }
+  .neural-orb { position: relative; width: 32px; height: 32px; }
   .neural-core {
-    position: absolute; top: 50%; left: 50%; width: 30%; height: 30%;
+    position: absolute; top: 50%; left: 50%; width: 34%; height: 34%;
     transform: translate(-50%, -50%); border-radius: 50%;
     background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
     box-shadow: 0 0 12px var(--accent-glow), 0 0 22px rgba(79, 142, 247, 0.25);
     animation: neuralPulse 5s ease-in-out infinite;
-    transition: transform 0.1s ease-out; /* smooths the per-frame --speak-level updates */
+    transition: transform 0.1s ease-out;
   }
   .neural-ring {
-    position: absolute; inset: 2px; border-radius: 50%;
+    position: absolute; inset: 1px; border-radius: 50%;
     border: 1.5px dashed rgba(79, 142, 247, 0.32);
     animation: neuralSpin 20s linear infinite;
   }
   .neural-ring-2 {
-    position: absolute; inset: -8px; border-radius: 50%;
+    position: absolute; inset: -6px; border-radius: 50%;
     border: 1px dashed rgba(79, 142, 247, 0.16);
     animation: neuralSpinReverse 28s linear infinite;
     display: none;
   }
   .neural-dot {
-    position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    position: absolute; width: 4px; height: 4px; border-radius: 50%;
     background: var(--accent-2); box-shadow: 0 0 6px var(--accent-glow);
-    top: 50%; left: 50%; --orbit-radius: 30px;
-    /* Slow by default (idle/connecting/active/thinking) — only "speaking"
-       speeds this up, so a fast orbit reads as an unambiguous "she's
-       talking right now" signal instead of blending into every state. */
+    top: 50%; left: 50%; --orbit-radius: 21px;
     animation: neuralOrbit 16s linear infinite;
   }
   .neural-dot:nth-child(4) { animation-delay: 0s; }
   .neural-dot:nth-child(5) { animation-delay: -3s; background: var(--accent-hover); }
-  .neural-dot:nth-child(6) { animation-delay: -6s; width: 4px; height: 4px; opacity: .7; }
+  .neural-dot:nth-child(6) { animation-delay: -6s; width: 3px; height: 3px; opacity: .7; }
   .neural-wave {
     position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
     border-radius: 50%; border: 1px solid rgba(79, 142, 247, 0.5);
@@ -245,12 +953,6 @@
     100% { transform: translate(-50%,-50%) scale(3); opacity: 0; }
   }
 
-  /* States, set via JS on #ai-orb: idle (no class) only shows core+ring —
-     ring-2/wave stay hidden until something is actually happening, same
-     idea the source component uses (the orbiting dots are the exception —
-     they're always visible, slow by default; see .neural-dot above).
-     connecting -> active (listening) -> thinking (tool call in flight)
-     each add motion/glow. */
   .orb-field.connecting .neural-core   { animation-duration: 3.2s; }
   .orb-field.connecting .neural-ring   { animation-duration: 12s; }
   .orb-field.connecting .neural-ring-2 { display: block; animation-duration: 18s; }
@@ -260,31 +962,24 @@
   .orb-field.active .neural-ring-2 { display: block; animation-duration: 12s; }
   .orb-field.active .neural-wave   { display: block; animation-duration: 10s; }
 
+  /* Thinking = a lookup is in flight. Borrows the recall register's
+     purple so the orb agrees with what the transcript is showing. */
   .orb-field.thinking .neural-core {
     animation-duration: 1.6s;
-    box-shadow: 0 0 16px var(--accent-glow), 0 0 30px rgba(79, 142, 247, 0.35);
+    background: radial-gradient(circle, #c4b5fd 0%, var(--accent-2) 60%, transparent 100%);
+    box-shadow: 0 0 16px rgba(167, 139, 250, 0.45), 0 0 30px rgba(167, 139, 250, 0.3);
   }
-  .orb-field.thinking .neural-ring   { animation-duration: 5s; }
+  .orb-field.thinking .neural-ring   { animation-duration: 5s; border-color: rgba(167, 139, 250, 0.35); }
   .orb-field.thinking .neural-ring-2 { display: block; animation-duration: 7s; }
-  .orb-field.thinking .neural-wave   { display: block; animation-duration: 5s; }
+  .orb-field.thinking .neural-wave   { display: block; animation-duration: 5s; border-color: rgba(167, 139, 250, 0.45); }
 
-  /* Speaking — the core stops running its own rhythm and tracks the actual
-     remote-audio volume instead (--speak-level, updated every frame from a
-     Web Audio AnalyserNode tapping the WebRTC track). The whole orb grows
-     (not just the core) so "she's talking" reads at a glance, not just on
-     close inspection; rings/waves pick up the audio reactivity too instead
-     of running a fixed canned loop underneath. transition on the base rule
-     (below) is what makes entering/leaving this state feel like a swell,
-     not a jump cut. */
-  .orb-field.speaking {
-    transform: scale(calc(1.1 + var(--speak-level) * 0.22));
-  }
+  .orb-field.speaking { transform: scale(calc(1.08 + var(--speak-level) * 0.18)); }
   .orb-field.speaking .neural-core {
     animation: none;
     transform: translate(-50%, -50%) scale(calc(1 + var(--speak-level) * 1.15));
     box-shadow:
-      0 0 calc(18px + var(--speak-level) * 30px) var(--accent-glow),
-      0 0 calc(32px + var(--speak-level) * 44px) rgba(79, 142, 247, 0.5);
+      0 0 calc(14px + var(--speak-level) * 26px) var(--accent-glow),
+      0 0 calc(26px + var(--speak-level) * 38px) rgba(79, 142, 247, 0.5);
   }
   .orb-field.speaking .neural-ring {
     animation-duration: 6s;
@@ -295,7 +990,7 @@
     animation-duration: 8s;
     border-color: rgba(79, 142, 247, calc(0.2 + var(--speak-level) * 0.35));
   }
-  .orb-field.speaking .neural-dot { animation-duration: 3s; } /* only state where the orbit speeds up */
+  .orb-field.speaking .neural-dot { animation-duration: 3s; }
   .orb-field.speaking .neural-wave {
     display: block;
     animation-duration: calc(8s - var(--speak-level) * 3s);
@@ -303,303 +998,71 @@
     border-color: rgba(79, 142, 247, calc(0.4 + var(--speak-level) * 0.5));
   }
 
-  header {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 4px;
+  .rail-scrim { display: none; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
 
-  h1 {
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: 0.01em;
-    text-align: center;
-    text-shadow: 0 4px 20px rgba(4, 10, 22, 0.75);
+  /* ══════════════════════════════════════════════════════════════
+     MOBILE — the rail becomes a drawer and the transcript takes the
+     entire screen between a 52px topbar and the dock. This is the fix
+     for "no mobile a janela da conversa é pequenininha": nothing is
+     capped at a fixed height any more, the chat is flex:1 of 100dvh.
+     ══════════════════════════════════════════════════════════════ */
+  @media (max-width: 900px) {
+    :root { --topbar-h: 52px; }
+    .shell { grid-template-columns: 1fr; }
+    .rail {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(280px, 84vw);
+      z-index: 40;
+      transform: translateX(-100%);
+      transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+      box-shadow: 0 0 40px rgba(4, 10, 22, 0.6);
+      background: rgba(8, 20, 38, 0.94);
+      padding-top: env(safe-area-inset-top);
+    }
+    body.rail-open .rail { transform: translateX(0); }
+    .rail-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 39;
+      background: rgba(4, 10, 22, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.24s ease;
+    }
+    body.rail-open .rail-scrim { opacity: 1; pointer-events: auto; }
+
+    .topbar .menu-btn { display: inline-grid; width: 36px; height: 36px; }
+    .menu-btn svg { width: 18px; height: 18px; }
+    .topbar { padding: 0 12px 0 10px; gap: 10px; padding-top: env(safe-area-inset-top); height: calc(var(--topbar-h) + env(safe-area-inset-top)); }
+    .topbar-titles p { display: none; }
+    .link-state { padding: 4px 10px 4px 8px; font-size: 11px; }
+
+    .transcript { padding: 16px 14px 8px; }
+    .transcript-inner { gap: 12px; }
+    .msg-user { max-width: 84%; }
+    .msg-assistant { max-width: 94%; }
+    .panel { padding: 16px 14px 20px; }
+    .kv { flex-direction: column; gap: 3px; }
+    .kv dt { width: auto; }
+
+    .dock { gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
+    .dock-hint { display: none; }
+    .orb-field { width: 40px; height: 40px; }
+    .neural-orb { width: 26px; height: 26px; }
+    .neural-dot { --orbit-radius: 17px; }
+    #connect-btn { flex: 1; }
+    .aurora-3 { display: none; }
   }
 
-  .subtitle {
-    color: var(--text-dim);
-    font-size: 0.82rem;
-    margin: 6px 0 20px;
-    text-align: center;
-  }
-
-  .status-row {
-    display: flex;
-    width: fit-content;
-    align-items: center;
-    gap: 8px;
-    margin: 0 auto 20px;
-    padding: 6px 12px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: var(--text-dim);
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    flex-shrink: 0;
-    transition: background 0.2s ease;
-  }
-
-  .dot.connecting { background: var(--yellow); animation: pulse 1.2s infinite; }
-  .dot.connected  { background: var(--green); animation: dotGlow 2.4s ease-in-out infinite; }
-  .dot.error      { background: var(--red); }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-  }
-  @keyframes dotGlow {
-    0%, 100% { box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
-    50%      { box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
-  }
-
-  /* Persistent conversation log (was: floating captions that faded after a
-     few seconds — replaced because a real record of the conversation was
-     needed). Scrolls internally so a long agent answer grows the log, not
-     the page — that's what fixes raw/unbounded responses blowing out the
-     card's layout. Bubble pattern adapted from Ads Analyst Agent's chat UI
-     (public/index.html — #messages/.message/.message.user/.message.ai),
-     scaled down for this card's 440px width. */
-  .transcript {
-    max-height: 260px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    margin-bottom: 20px;
-    padding-right: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-  .transcript::-webkit-scrollbar { width: 5px; }
-  .transcript::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-full); }
-
-  @keyframes lineIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes lineOut {
-    from { opacity: 1; transform: translateY(0); }
-    to   { opacity: 0; transform: translateY(-6px); }
-  }
-
-  /* Transient status notices only (connected/disconnected/error) — these
-     still fade, unlike the conversation itself below. */
-  .line-system, .line-error {
-    align-self: center;
-    text-align: center;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin: 0;
-    animation: lineIn 0.3s ease both;
-  }
-  .line-error { color: var(--red); }
-  .line-out   { animation: lineOut 0.5s ease forwards; }
-
-  /* Any message/bubble/pill below can contain a long unbroken string (a
-     URL, a raw id) — break-word is what actually prevents "estoura a tela":
-     without it, one long word overflows its bubble's width regardless of
-     the scroll container. */
-  .msg, .activity-pill, .activity-detail { overflow-wrap: break-word; word-break: break-word; }
-
-  .msg {
-    max-width: 84%;
-    font-size: 0.84rem;
-    line-height: 1.42;
-    animation: lineIn 0.3s ease both;
-  }
-  .msg-user {
-    align-self: flex-end;
-    padding: 9px 13px;
-    border-radius: var(--radius-md);
-    border-bottom-right-radius: 4px;
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(30, 90, 150, 0.32));
-    border: 1px solid rgba(79, 142, 247, 0.3);
-    color: var(--text);
-  }
-  .msg-assistant {
-    align-self: flex-start;
-    max-width: 92%;
-    display: flex;
-    gap: 8px;
-  }
-  .msg-assistant .msg-avatar {
-    flex-shrink: 0;
-    width: 20px; height: 20px;
-    margin-top: 2px;
-    border-radius: 50%;
-    background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
-    box-shadow: 0 0 8px var(--accent-glow);
-  }
-  .msg-assistant .msg-bubble {
-    padding: 9px 13px;
-    border-radius: var(--radius-md);
-    border-bottom-left-radius: 4px;
-    background: linear-gradient(135deg, rgba(14, 38, 75, 0.6), rgba(10, 26, 54, 0.7));
-    border: 1px solid var(--border);
-    border-left: 2px solid rgba(79, 142, 247, 0.35);
-    color: var(--text);
-  }
-
-  /* Tool-call activity — a pill per tool the agent calls, pulsing +
-     shimmering while in flight, click to expand what was asked of it.
-     Adapted from Ads Analyst Agent's .activity-line/.tool-result-*. */
-  .activity { align-self: flex-start; max-width: 92%; }
-  .activity-pill {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 5px 11px;
-    border-radius: var(--radius-full);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    font-size: 0.76rem;
-    color: var(--text-dim);
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-  }
-  .activity-dot {
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    background: var(--text-muted);
-    transition: background 0.2s ease;
-  }
-  .activity-pill.active .activity-dot {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent-glow);
-    animation: pulse 1s ease-in-out infinite;
-  }
-  .activity-pill.done .activity-dot  { background: var(--green); }
-  .activity-pill.error .activity-dot { background: var(--red); }
-  .activity-pill.active::after {
-    content: "";
-    position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(79, 142, 247, 0.18), transparent);
-    animation: shimmerSweep 1.6s linear infinite;
-  }
-  @keyframes shimmerSweep {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-  .activity-chevron {
-    margin-left: 2px;
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
-  }
-  .activity.open .activity-chevron { transform: rotate(90deg); }
-  .activity-detail {
-    display: none;
-    margin-top: 5px;
-    padding: 7px 9px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    font-family: monospace;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    max-height: 120px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-  }
-  .activity.open .activity-detail { display: block; }
-
-  /* "Thinking" indicator while the knowledge-base lookup is in flight */
-  .typing-dots { display: inline-flex; gap: 4px; align-items: center; }
-  .typing-dots i {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: var(--accent-hover);
-    animation: typingBounce 1.1s ease-in-out infinite;
-  }
-  .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
-  .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes typingBounce {
-    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-    30%           { opacity: 1;   transform: translateY(-3px); }
-  }
-
-  .controls {
-    display: flex;
-    gap: 10px;
-  }
-
-  button {
-    flex: 1;
-    padding: 12px 16px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text);
-    font-family: var(--font-primary);
-    font-size: 0.92rem;
-    font-weight: 600;
-    cursor: pointer;
-    text-shadow: none;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.15s ease;
-  }
-
-  button:hover:not(:disabled) { background: var(--glass-hover); }
-  button:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  #connect-btn {
-    background: var(--gradient-action);
-    border-color: transparent;
-    color: #fff;
-  }
-  #connect-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: var(--glow-accent);
-  }
-  #connect-btn.active {
-    background: rgba(248, 113, 113, 0.12);
-    border-color: var(--red);
-    color: var(--red);
-  }
-  #connect-btn.active:hover:not(:disabled) {
-    box-shadow: 0 0 24px rgba(248, 113, 113, 0.3);
-  }
-
-  #mic-btn.muted {
-    background: rgba(248, 113, 113, 0.1);
-    border-color: var(--red);
-    color: var(--red);
-  }
-  /* Live-listening feedback: a soft breathing ring while the mic is
-     connected and unmuted — reads as "it's hearing you" at a glance. */
-  #mic-btn.listening {
-    border-color: var(--accent);
-    animation: micPulse 1.8s ease-in-out infinite;
-  }
-  @keyframes micPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 142, 247, 0.35); }
-    50%      { box-shadow: 0 0 0 6px rgba(79, 142, 247, 0); }
-  }
-
-  footer {
-    margin-top: 18px;
-    color: var(--text-muted);
-    font-size: 0.74rem;
-    text-align: center;
-  }
-
-  @media (max-width: 480px) {
-    body { padding: 16px; }
-    .card { padding: 22px 18px; }
-    h1 { font-size: 1.22rem; }
-    .orb-field { width: 68px; height: 68px; }
-    .neural-orb { width: 38px; height: 38px; }
-    .transcript { max-height: 200px; }
-    .msg { font-size: 0.8rem; }
-    .aurora-3 { display: none; } /* one fewer animated layer on small/low-power screens */
+  @media (max-width: 380px) {
+    .btn { padding: 0 14px; font-size: 13px; }
   }
 </style>
 </head>
@@ -610,37 +1073,183 @@
   <div class="aurora-layer aurora-3"></div>
   <canvas id="constellation"></canvas>
 
-  <div class="card">
-    <div class="orb-field" id="ai-orb" aria-hidden="true">
-      <div class="neural-orb">
-        <div class="neural-core"></div>
-        <div class="neural-ring"></div>
-        <div class="neural-ring-2"></div>
-        <div class="neural-dot"></div>
-        <div class="neural-dot"></div>
-        <div class="neural-dot"></div>
-        <div class="neural-wave"></div>
-        <div class="neural-wave"></div>
+  <div class="shell">
+    <aside class="rail" id="rail" aria-label="Sections">
+      <div class="rail-head">
+        <div class="mark" aria-hidden="true"></div>
+        <h1 class="wordmark">Mnemosyne<span>Voice recall</span></h1>
       </div>
-    </div>
-    <header>
-      <h1>Mnemosyne</h1>
-    </header>
-    <p class="subtitle">Voice access to your knowledge base.</p>
 
-    <div class="status-row">
-      <span class="dot" id="status-dot"></span>
-      <span id="status-text">Idle</span>
-    </div>
+      <nav class="rail-nav" role="tablist" aria-orientation="vertical">
+        <span class="nav-label">Session</span>
 
-    <div class="transcript" id="transcript"></div>
+        <button class="nav-item" role="tab" id="tab-conversation" aria-controls="view-conversation" aria-selected="true" data-view="conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Conversation
+        </button>
 
-    <div class="controls">
-      <button id="connect-btn">Connect</button>
-      <button id="mic-btn" disabled>Mute</button>
-    </div>
+        <button class="nav-item" role="tab" id="tab-recall" aria-controls="view-recall" aria-selected="false" data-view="recall">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+          Recall log
+          <span class="nav-count" id="recall-count">0</span>
+        </button>
 
-    <footer>Requires microphone access. English or Portuguese.</footer>
+        <button class="nav-item" role="tab" id="tab-session" aria-controls="view-session" aria-selected="false" data-view="session">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          Connection
+        </button>
+
+        <span class="nav-label">Reference</span>
+
+        <button class="nav-item" role="tab" id="tab-about" aria-controls="view-about" aria-selected="false" data-view="about">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          How it works
+        </button>
+
+        <button class="nav-item" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v4H4z"/><path d="M5 8v12h14V8"/><line x1="10" y1="13" x2="14" y2="13"/></svg>
+          Vault files
+          <span class="badge-soon">Soon</span>
+        </button>
+      </nav>
+
+      <div class="rail-foot">
+        <div class="stat"><span class="stat-value" id="stat-uptime">--:--</span><span class="stat-label">Live</span></div>
+        <div class="stat"><span class="stat-value" id="stat-turns">0</span><span class="stat-label">Turns</span></div>
+        <div class="stat"><span class="stat-value" id="stat-recalls">0</span><span class="stat-label">Recalls</span></div>
+      </div>
+    </aside>
+
+    <div class="rail-scrim" id="rail-scrim"></div>
+
+    <main class="stage">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="rail">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+        </button>
+        <div class="topbar-titles">
+          <h1 id="view-title">Conversation</h1>
+          <p id="view-sub">Speak, and read back what was heard and recalled</p>
+        </div>
+        <div class="link-state">
+          <span class="pulse" id="status-dot"></span>
+          <span id="status-text" aria-live="polite">Idle</span>
+        </div>
+      </header>
+
+      <div class="views">
+        <!-- Conversation -->
+        <section class="view is-active" id="view-conversation" role="tabpanel" aria-labelledby="tab-conversation">
+          <div class="transcript" id="transcript">
+            <div class="transcript-inner" id="transcript-inner">
+              <div class="empty" id="empty-state">
+                <div class="empty-glyph" aria-hidden="true"></div>
+                <h2>Nothing heard yet</h2>
+                <p>Connect and start talking. Your turns and hers land here as they happen — a lookup into the knowledge base gets its own entry, separate from what she says out loud.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recall log -->
+        <section class="view" id="view-recall" role="tabpanel" aria-labelledby="tab-recall" hidden>
+          <div class="panel">
+            <div class="panel-inner">
+              <section>
+                <h2>Knowledge-base calls</h2>
+                <p>Every tool the LangGraph agent ran this session, in order. This is what actually touched the vault — search, read, or write.</p>
+                <div class="card" id="recall-log">
+                  <div class="panel-empty" id="recall-log-empty">No lookups yet this session.</div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- Connection -->
+        <section class="view" id="view-session" role="tabpanel" aria-labelledby="tab-session" hidden>
+          <div class="panel">
+            <div class="panel-inner">
+              <section>
+                <h2>Connection</h2>
+                <p>What this browser is holding open right now.</p>
+                <dl class="card">
+                  <div class="kv"><dt>Link state</dt><dd id="meta-state">Idle</dd></div>
+                  <div class="kv"><dt>Session id</dt><dd id="meta-session">—</dd></div>
+                  <div class="kv"><dt>Connected for</dt><dd id="meta-uptime">—</dd></div>
+                  <div class="kv"><dt>Transport</dt><dd>WebRTC · peer-to-peer audio + data channel</dd></div>
+                  <div class="kv"><dt>Microphone</dt><dd id="meta-mic">—</dd></div>
+                  <div class="kv"><dt>Your turns</dt><dd id="meta-turns">0</dd></div>
+                  <div class="kv"><dt>Vault lookups</dt><dd id="meta-recalls">0</dd></div>
+                </dl>
+              </section>
+
+              <section>
+                <h2>Reading the transcript</h2>
+                <div class="legend">
+                  <div class="legend-row">
+                    <span class="legend-swatch" style="background: var(--accent);"></span>
+                    <span><b>Blue — spoken</b>What you said and what Mnemosyne said back. Her bubbles are the words actually coming out of the speaker.</span>
+                  </div>
+                  <div class="legend-row">
+                    <span class="legend-swatch" style="background: var(--accent-2);"></span>
+                    <span><b>Purple — recalled</b>A knowledge-base lookup: what was asked of it, which tools ran, and the raw text the agent returned. Collapsed by default — it is the tool's output, not her voice.</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="view" id="view-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+          <div class="panel">
+            <div class="panel-inner">
+              <section>
+                <h2>What happens when you talk</h2>
+                <ol class="steps-list">
+                  <li><strong>Your voice goes straight to OpenAI.</strong> The browser opens a WebRTC connection to the Realtime API using a short-lived key this server hands out. Audio never round-trips through the backend.</li>
+                  <li><strong>Mnemosyne answers on her own</strong> for anything she already knows — that's the voice you hear, and the blue bubbles in the transcript.</li>
+                  <li><strong>For anything personal she calls the knowledge base.</strong> That fires a request back to this server, which runs the LangGraph agent over the vault: hybrid search (embeddings + full-text, fused and reranked), plus read and write tools against GitHub.</li>
+                  <li><strong>The result is handed back to her</strong>, and she says it in her own words. The raw text the agent returned stays in the purple recall entry — it is a receipt, not something she said.</li>
+                </ol>
+              </section>
+
+              <section>
+                <h2>Notes</h2>
+                <p>She speaks English and Portuguese and follows whichever you use. Memory lasts as long as this session — a new connection starts a new thread. Writes to the vault land as real commits, so anything she saves is revertible.</p>
+              </section>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="dock">
+        <div class="orb-field" id="ai-orb" aria-hidden="true">
+          <div class="neural-orb">
+            <div class="neural-core"></div>
+            <div class="neural-ring"></div>
+            <div class="neural-ring-2"></div>
+            <div class="neural-dot"></div>
+            <div class="neural-dot"></div>
+            <div class="neural-dot"></div>
+            <div class="neural-wave"></div>
+            <div class="neural-wave"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="connect-btn">
+          <span id="connect-label">Connect</span>
+        </button>
+
+        <button class="icon-btn" id="mic-btn" disabled aria-label="Mute microphone" title="Mute microphone">
+          <svg class="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+          <svg class="icon-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="3" x2="21" y2="21"/><path d="M9 9v2a3 3 0 0 0 4.6 2.5"/><path d="M15 10.5V5a3 3 0 0 0-5.7-1.3"/><path d="M5 10v1a7 7 0 0 0 10.7 6"/><path d="M19 10v1a6.9 6.9 0 0 1-.4 2.3"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+        </button>
+
+        <p class="dock-hint" id="dock-hint">Microphone access required · English or Portuguese</p>
+      </div>
+    </main>
   </div>
 
   <audio id="remote-audio" autoplay></audio>

@@ -4,18 +4,54 @@
 // calls below) sit behind HTTP Basic Auth, enforced server-side per route.
 // The browser caches those credentials after the first prompt and resends
 // them automatically on same-origin requests, so no token is handled here.
+//
+// The transcript has two registers, and keeping them apart is the whole
+// point of the rendering code below:
+//   spoken  — what you said and what Mnemosyne said (blue bubbles)
+//   recall  — a knowledge-base lookup: the request, the tools that ran, and
+//             the raw text the LangGraph agent returned (purple lane)
+// The agent's return used to be rendered as an assistant bubble, which read
+// as Mnemosyne talking twice — once in raw agent prose, once in her own
+// words. It is a tool result and is now presented as one.
 
 // Must match `openai_realtimeapi_tool_name` in prompts.py — this is the
 // function name the Realtime session was configured to call.
 const KNOWLEDGE_BASE_TOOL = "Knowledge_base";
 
+// Event-timing logging is opt-in (?debug=1) — it was load-bearing while the
+// bubble-ordering fix was being worked out, useless noise the rest of the time.
+const DEBUG = new URLSearchParams(location.search).has("debug");
+
 const connectBtn = document.getElementById("connect-btn");
+const connectLabel = document.getElementById("connect-label");
 const micBtn = document.getElementById("mic-btn");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const transcriptEl = document.getElementById("transcript");
+const transcriptInner = document.getElementById("transcript-inner");
+const emptyState = document.getElementById("empty-state");
 const remoteAudio = document.getElementById("remote-audio");
 const aiOrb = document.getElementById("ai-orb");
+const dockHint = document.getElementById("dock-hint");
+
+const railEl = document.getElementById("rail");
+const railScrim = document.getElementById("rail-scrim");
+const menuBtn = document.getElementById("menu-btn");
+const viewTitle = document.getElementById("view-title");
+const viewSub = document.getElementById("view-sub");
+
+const recallLog = document.getElementById("recall-log");
+const recallLogEmpty = document.getElementById("recall-log-empty");
+const recallCount = document.getElementById("recall-count");
+const statUptime = document.getElementById("stat-uptime");
+const statTurns = document.getElementById("stat-turns");
+const statRecalls = document.getElementById("stat-recalls");
+const metaState = document.getElementById("meta-state");
+const metaSession = document.getElementById("meta-session");
+const metaUptime = document.getElementById("meta-uptime");
+const metaMic = document.getElementById("meta-mic");
+const metaTurns = document.getElementById("meta-turns");
+const metaRecalls = document.getElementById("meta-recalls");
 
 let pc = null;
 let dc = null;
@@ -24,6 +60,11 @@ let micMuted = false;
 let sessionId = null;
 let connected = false;
 let toolCallInFlight = false;
+
+let connectedAt = 0;
+let uptimeTimer = null;
+let turnCount = 0;
+let recallTotal = 0;
 
 // Bubble ordering: anchored on the most fundamental, longest-standing
 // lifecycle events (VAD speech-start, response-created) instead of
@@ -41,9 +82,90 @@ const pendingUserBubbles = [];
 // response_id, so this one's safe to key by id rather than a queue.
 const responseBubbles = new Map();
 
+// ── Icons (inline, one set, matched to the markup's stroke weight) ──────
+const ICON = {
+  vault:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>',
+  caret:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>',
+};
+
+// ── Shell: views, drawer, session meta ─────────────────────────────────
+const VIEWS = {
+  conversation: ["Conversation", "Speak, and read back what was heard and recalled"],
+  recall: ["Recall log", "Every knowledge-base call made this session"],
+  session: ["Connection", "What this browser is holding open right now"],
+  about: ["How it works", "Voice to OpenAI, questions to your vault"],
+};
+
+const tabs = Array.from(document.querySelectorAll(".nav-item[data-view]"));
+
+function showView(name) {
+  tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.view === name)));
+  Object.keys(VIEWS).forEach((key) => {
+    const section = document.getElementById(`view-${key}`);
+    const isActive = key === name;
+    section.classList.toggle("is-active", isActive);
+    section.hidden = !isActive;
+  });
+  const [title, sub] = VIEWS[name];
+  viewTitle.textContent = title;
+  viewSub.textContent = sub;
+}
+
+tabs.forEach((tab) =>
+  tab.addEventListener("click", () => {
+    showView(tab.dataset.view);
+    closeRail();
+  })
+);
+
+function openRail() {
+  document.body.classList.add("rail-open");
+  menuBtn.setAttribute("aria-expanded", "true");
+}
+function closeRail() {
+  document.body.classList.remove("rail-open");
+  menuBtn.setAttribute("aria-expanded", "false");
+}
+menuBtn.addEventListener("click", () =>
+  document.body.classList.contains("rail-open") ? closeRail() : openRail()
+);
+railScrim.addEventListener("click", closeRail);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeRail();
+});
+
+function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mm = String(Math.floor(total / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
+function refreshUptime() {
+  const text = connectedAt ? formatDuration(Date.now() - connectedAt) : "--:--";
+  statUptime.textContent = text;
+  metaUptime.textContent = connectedAt ? text : "—";
+}
+
+function bumpTurns() {
+  turnCount += 1;
+  statTurns.textContent = String(turnCount);
+  metaTurns.textContent = String(turnCount);
+}
+
+function bumpRecalls() {
+  recallTotal += 1;
+  statRecalls.textContent = String(recallTotal);
+  metaRecalls.textContent = String(recallTotal);
+  recallCount.textContent = String(recallTotal);
+}
+
 function setStatus(text, state) {
   statusText.textContent = text;
-  statusDot.className = "dot" + (state ? ` ${state}` : "");
+  statusDot.className = "pulse" + (state ? ` ${state}` : "");
+  metaState.textContent = text;
 }
 
 // state: "" (idle) | "connecting" | "active" (connected, listening)
@@ -92,14 +214,13 @@ function stopSpeakingAnalysis() {
   if (speakingRaf) cancelAnimationFrame(speakingRaf);
   speakingRaf = null;
   aiOrb.style.setProperty("--speak-level", "0");
-  setOrbState(toolCallInFlight ? "thinking" : (connected ? "active" : ""));
+  setOrbState(toolCallInFlight ? "thinking" : connected ? "active" : "");
 }
 
-// Transcript is a persistent conversation log (user/assistant bubbles +
-// tool-activity pills), not floating captions — it scrolls internally
-// instead of growing the page, which is also what stops a long raw agent
-// answer from blowing out the card's layout. Only transient status notices
-// (connected/disconnected/error) still fade — the conversation itself stays.
+// ── Transcript ─────────────────────────────────────────────────────────
+// A persistent conversation log, not floating captions. It scrolls inside
+// its own pane instead of growing the page, so a long agent answer can
+// never blow out the layout.
 const STATUS_HOLD_MS = 5000;
 const LINE_FADE_MS = 600;
 
@@ -111,13 +232,18 @@ function scrollTranscriptToBottom() {
   if (distanceFromBottom < 80) transcriptEl.scrollTop = transcriptEl.scrollHeight;
 }
 
+function appendToTranscript(node) {
+  if (emptyState.isConnected) emptyState.remove();
+  transcriptInner.appendChild(node);
+  scrollTranscriptToBottom();
+  return node;
+}
+
 function addSystemLine(text, role = "system") {
   const p = document.createElement("p");
   p.className = `line-${role}`;
   p.textContent = text;
-  transcriptEl.appendChild(p);
-  scrollTranscriptToBottom();
-  return p;
+  return appendToTranscript(p);
 }
 
 function scheduleFade(el) {
@@ -132,52 +258,131 @@ function addUserMessage(text) {
   const div = document.createElement("div");
   div.className = "msg msg-user";
   div.textContent = text;
-  transcriptEl.appendChild(div);
-  scrollTranscriptToBottom();
-  return div;
+  return appendToTranscript(div);
 }
 
-// Returns the inner .msg-bubble — callers just keep setting .textContent
-// on it as more of the answer streams in (see queryKnowledgeBase()/
-// response.output_audio_transcript.delta below).
+// Returns the inner .msg-bubble — callers keep writing into it as the
+// spoken transcript streams in. The wrapper is stashed on the bubble so an
+// unused reservation can be removed again (see response.done).
 function addAssistantMessage() {
   const wrap = document.createElement("div");
   wrap.className = "msg msg-assistant";
   wrap.innerHTML =
     '<div class="msg-avatar"></div>' +
     '<div class="msg-bubble"><span class="typing-dots"><i></i><i></i><i></i></span></div>';
-  transcriptEl.appendChild(wrap);
-  scrollTranscriptToBottom();
-  return wrap.querySelector(".msg-bubble");
+  appendToTranscript(wrap);
+  const bubble = wrap.querySelector(".msg-bubble");
+  bubble._wrap = wrap;
+  return bubble;
 }
 
-// A tool call in flight, shown as a pulsing/shimmering pill. Click to expand
-// what was asked of it — NOT the tool's actual return value: the backend
-// stream (send_message_to_ai() in graph.py) only ever surfaces "this tool
-// was called with these args", never what it handed back, so that's the
-// most honest thing to show here without a backend change.
-function addActivity(label) {
-  const wrap = document.createElement("div");
-  wrap.className = "activity";
-  wrap.innerHTML =
-    '<div class="activity-pill active">' +
-    '<span class="activity-dot"></span>' +
-    '<span class="activity-label"></span>' +
-    '<span class="activity-chevron">&#9656;</span>' +
-    "</div>" +
-    '<div class="activity-detail"></div>';
-  wrap.querySelector(".activity-label").textContent = label;
-  wrap.querySelector(".activity-detail").textContent = label;
-  wrap.querySelector(".activity-pill").addEventListener("click", () => wrap.classList.toggle("open"));
-  transcriptEl.appendChild(wrap);
-  scrollTranscriptToBottom();
-  return wrap;
+// ── Recall entry — a knowledge-base lookup, in its own register ────────
+// Holds: the request Mnemosyne made, a live list of the tools the LangGraph
+// agent ran, and the raw text it returned. The raw text is collapsed by
+// default and labelled as what it is — it is the tool's output, and showing
+// it as an assistant bubble made it read as a second, clumsier Mnemosyne.
+function addRecall(request) {
+  const el = document.createElement("div");
+  el.className = "recall";
+  el.dataset.state = "running";
+  el.innerHTML =
+    '<button class="recall-head" type="button" aria-expanded="false">' +
+    ICON.vault +
+    '<span class="recall-title">Knowledge base</span>' +
+    '<span class="recall-status">Searching your vault…</span>' +
+    '<span class="recall-tools"></span>' +
+    '<span class="recall-time"></span>' +
+    `<span class="recall-caret">${ICON.caret}</span>` +
+    "</button>" +
+    '<p class="recall-ask"></p>' +
+    '<div class="recall-steps"></div>' +
+    '<div class="recall-body">' +
+    '<div class="recall-body-label">Raw result returned to Mnemosyne</div>' +
+    '<div class="recall-answer"></div>' +
+    "</div>";
+
+  el.querySelector(".recall-ask").textContent = request ? `“${request}”` : "(no request text)";
+
+  const head = el.querySelector(".recall-head");
+  head.addEventListener("click", () => {
+    const open = el.classList.toggle("open");
+    head.setAttribute("aria-expanded", String(open));
+  });
+
+  const timeEl = el.querySelector(".recall-time");
+  const toolsEl = el.querySelector(".recall-tools");
+  const startedAt = Date.now();
+  let stepCount = 0;
+  const tick = setInterval(() => {
+    timeEl.textContent = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+  }, 100);
+
+  appendToTranscript(el);
+  bumpRecalls();
+
+  return {
+    el,
+    addStep(text) {
+      const row = document.createElement("div");
+      row.className = "step running";
+      row.innerHTML = '<span class="step-dot"></span><span class="step-text"></span>';
+      row.querySelector(".step-text").textContent = text;
+      el.querySelector(".recall-steps").appendChild(row);
+      stepCount += 1;
+      scrollTranscriptToBottom();
+      return row;
+    },
+    setAnswer(text) {
+      el.querySelector(".recall-answer").textContent = text;
+    },
+    finish(ok, text) {
+      clearInterval(tick);
+      timeEl.textContent = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+      el.dataset.state = ok ? "done" : "failed";
+      el.querySelector(".recall-status").textContent = ok ? "Recalled" : "Lookup failed";
+      toolsEl.textContent = stepCount ? `${stepCount} tool${stepCount > 1 ? "s" : ""}` : "";
+      el.querySelectorAll(".step").forEach((s) => {
+        s.classList.remove("running");
+        s.classList.add(ok ? "done" : "failed");
+      });
+      if (text !== undefined) el.querySelector(".recall-answer").textContent = text;
+      scrollTranscriptToBottom();
+    },
+  };
 }
 
-function finishActivity(wrap, ok) {
-  const pill = wrap.querySelector(".activity-pill");
-  pill.classList.remove("active");
-  pill.classList.add(ok ? "done" : "error");
+// ── Recall log panel ───────────────────────────────────────────────────
+// Same events, different job: the transcript shows a lookup in context, the
+// log lists every individual tool call with a timestamp so a slow or wrong
+// lookup can be picked apart after the fact.
+function addLogRow(toolCallText) {
+  if (recallLogEmpty.isConnected) recallLogEmpty.remove();
+
+  const sep = toolCallText.indexOf(" ");
+  const tool = sep === -1 ? toolCallText : toolCallText.slice(0, sep);
+  const args = sep === -1 ? "" : toolCallText.slice(sep + 1);
+
+  const row = document.createElement("div");
+  row.className = "log-row";
+  row.innerHTML =
+    '<span class="log-time"></span>' +
+    '<span class="log-body"><span class="log-tool"></span><span class="log-args"></span></span>' +
+    '<span class="log-state" data-state="running">Running</span>';
+  row.querySelector(".log-time").textContent = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  row.querySelector(".log-tool").textContent = tool;
+  row.querySelector(".log-args").textContent = args;
+  recallLog.appendChild(row);
+  return row;
+}
+
+function finishLogRow(row, ok) {
+  const state = row.querySelector(".log-state");
+  state.dataset.state = ok ? "done" : "failed";
+  state.textContent = ok ? "Done" : "Failed";
 }
 
 async function fetchEphemeralKey() {
@@ -190,13 +395,11 @@ async function fetchEphemeralKey() {
 
 // Calls our own backend, which runs the LangGraph agent (RAG search included).
 // The backend streams NDJSON — one {"Type": ..., "content": ...} object per
-// line (see send_message_to_ai() in graph.py). "final_aswer"/"error" chunks
-// are the user-facing answer, shown here and returned as the function-call
-// result. "thinking"/"tool_use" chunks are the agent's internal progress
-// (covers every tool it calls along the way — search, read, write, ...) —
-// not shown here, but forwarded live via onProgress so the caller can relay
-// them to the Realtime API as it goes.
-async function queryKnowledgeBase(request, bubble, onProgress) {
+// line (see send_message_to_ai() in graph.py). "final_answer"/"error" chunks
+// are the answer handed back to Mnemosyne. "thinking"/"tool_use" chunks are
+// the agent's internal progress (covers every tool it calls along the way —
+// search, read, write, ...), forwarded live via onProgress.
+async function queryKnowledgeBase(request, onAnswer, onProgress) {
   const res = await fetch("/realtime/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -219,12 +422,11 @@ async function queryKnowledgeBase(request, bubble, onProgress) {
     } catch {
       return; // malformed/partial line — ignore rather than crash the stream
     }
-    if (chunk.Type === "final_aswer" || chunk.Type === "error") {
+    if (chunk.Type === "final_answer" || chunk.Type === "error") {
       finalAnswer += chunk.content;
-      bubble.textContent = finalAnswer;
-      scrollTranscriptToBottom();
+      onAnswer?.(finalAnswer);
     } else if (chunk.Type === "tool_use") {
-      // "thinking" chunks are dropped here — always the same "Pensando..."
+      // "thinking" chunks are dropped here — always the same "Thinking..."
       // filler (Portuguese, no real content); tool_use carries actual
       // signal (which tool, which args), worth relaying.
       onProgress?.(chunk.content);
@@ -261,16 +463,18 @@ async function handleFunctionCall(name, callId, argsJson) {
 
   toolCallInFlight = true;
   setOrbState("thinking");
+  setStatus("Recalling…", "thinking");
+
   // response.done (what triggers this) always fires after any spoken part
   // of the same response already streamed — appending here lands right
   // after that, which is correct DOM order for this response's own turn.
-  const bubble = addAssistantMessage();
+  const recall = addRecall(request);
 
-  // One activity pill per tool the agent calls along the way — the backend
-  // stream doesn't say when an individual tool call finishes, only when the
-  // whole request does, so every pill opened during this call gets marked
-  // done/error together at the end (see below), not one by one.
-  const activities = [];
+  // One row per tool the agent calls along the way. The backend stream
+  // doesn't say when an individual tool call finishes, only when the whole
+  // request does, so every row opened during this call is marked
+  // done/failed together at the end, not one by one.
+  const logRows = [];
 
   // Relay every tool call into the Realtime conversation as it happens.
   // Without a response.create, none of this narrates out loud — a
@@ -284,16 +488,19 @@ async function handleFunctionCall(name, callId, argsJson) {
   // explained once in openai_realtimeapi_prompt, not repeated per message.
   let narratedOnce = false;
   const sendProgressNote = (toolCallText) => {
-    activities.push(addActivity(toolCallText));
+    recall.addStep(toolCallText);
+    logRows.push(addLogRow(toolCallText));
     if (!dc || dc.readyState !== "open") return;
-    dc.send(JSON.stringify({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "system",
-        content: [{ type: "input_text", text: `[AGENT PROGRESS] ${toolCallText}` }],
-      },
-    }));
+    dc.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [{ type: "input_text", text: `[AGENT PROGRESS] ${toolCallText}` }],
+        },
+      })
+    );
     if (!narratedOnce) {
       narratedOnce = true;
       dc.send(JSON.stringify({ type: "response.create" }));
@@ -301,27 +508,32 @@ async function handleFunctionCall(name, callId, argsJson) {
   };
 
   let output;
+  let ok = true;
   try {
-    output = await queryKnowledgeBase(request, bubble, sendProgressNote);
-    activities.forEach((a) => finishActivity(a, true));
+    output = await queryKnowledgeBase(request, (partial) => recall.setAnswer(partial), sendProgressNote);
   } catch (err) {
+    ok = false;
     output = `Lookup failed: ${err.message}`;
-    bubble.textContent = output;
-    activities.forEach((a) => finishActivity(a, false));
   }
+  recall.finish(ok, output);
+  logRows.forEach((row) => finishLogRow(row, ok));
+
   toolCallInFlight = false;
   setOrbState(connected ? "active" : "");
+  if (connected) setStatus("Connected", "connected");
 
   if (!dc || dc.readyState !== "open") return;
 
-  dc.send(JSON.stringify({
-    type: "conversation.item.create",
-    item: {
-      type: "function_call_output",
-      call_id: callId,
-      output: JSON.stringify({ result: output }),
-    },
-  }));
+  dc.send(
+    JSON.stringify({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify({ result: output }),
+      },
+    })
+  );
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
@@ -360,10 +572,7 @@ function handleServerEvent(raw) {
     return;
   }
 
-  // Temporary diagnostic: real arrival order/timing of these events is what
-  // the bubble-ordering fix depends on — log it so a mis-ordered transcript
-  // can be root-caused from the browser console (F12) instead of guessed at.
-  if (["input_audio_buffer.speech_started", "conversation.item.input_audio_transcription.completed", "response.created", "response.output_audio_transcript.delta", "response.done"].includes(event.type)) {
+  if (DEBUG) {
     console.log(`[EVT ${performance.now().toFixed(0)}ms]`, event.type, "response:", event.response?.id ?? event.response_id ?? "-");
   }
 
@@ -385,6 +594,7 @@ function handleServerEvent(raw) {
     // order; content backfills whenever the transcript actually arrives.
     case "input_audio_buffer.speech_started":
       pendingUserBubbles.push(addUserMessage("…"));
+      bumpTurns();
       break;
 
     // Requires audio.input.transcription set in the session config
@@ -422,6 +632,20 @@ function handleServerEvent(raw) {
       // Safety net: if the buffer events above never fired for some reason,
       // don't leave the orb stuck showing "speaking" forever.
       if (aiOrb.classList.contains("speaking")) stopSpeakingAnalysis();
+
+      // A response whose only output is a function call never produces any
+      // spoken transcript, so the bubble reserved at response.created would
+      // sit there with the typing dots bouncing forever. Drop reservations
+      // that never received a word.
+      const reserved = responseBubbles.get(event.response?.id);
+      if (reserved) {
+        if (!reserved.textContent && !reserved._twQueue) {
+          if (reserved._twTimer) clearInterval(reserved._twTimer);
+          reserved._wrap?.remove();
+        }
+        responseBubbles.delete(event.response.id);
+      }
+
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
@@ -445,6 +669,7 @@ async function connect() {
 
   try {
     sessionId = crypto.randomUUID();
+    metaSession.textContent = sessionId;
     const ephemeralKey = await fetchEphemeralKey();
 
     pc = new RTCPeerConnection();
@@ -455,18 +680,24 @@ async function connect() {
 
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     micStream.getTracks().forEach((track) => pc.addTrack(track, micStream));
+    metaMic.textContent = micStream.getAudioTracks()[0]?.label || "Default input";
 
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("message", (e) => handleServerEvent(e.data));
     dc.addEventListener("open", () => {
       connected = true;
+      connectedAt = Date.now();
+      refreshUptime();
+      uptimeTimer = setInterval(refreshUptime, 1000);
       setStatus("Connected", "connected");
       setOrbState("active");
-      connectBtn.textContent = "Disconnect";
-      connectBtn.classList.add("active");
+      connectLabel.textContent = "End session";
+      connectBtn.classList.remove("btn-primary");
+      connectBtn.classList.add("btn-danger");
       connectBtn.disabled = false;
       micBtn.disabled = false;
       micBtn.classList.add("listening");
+      dockHint.textContent = "Listening — just talk";
       scheduleFade(addSystemLine("Connected. Start talking."));
     });
     dc.addEventListener("close", () => {
@@ -508,6 +739,7 @@ function cleanup() {
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   if (speakingRaf) cancelAnimationFrame(speakingRaf);
   if (audioCtx) audioCtx.close();
+  if (uptimeTimer) clearInterval(uptimeTimer);
   dc = null;
   pc = null;
   micStream = null;
@@ -516,20 +748,26 @@ function cleanup() {
   analyser = null;
   levelData = null;
   speakingRaf = null;
+  uptimeTimer = null;
+  connectedAt = 0;
   pendingUserBubbles.length = 0;
   responseBubbles.clear();
-  micBtn.textContent = "Mute";
-  micBtn.classList.remove("muted");
-  micBtn.classList.remove("listening");
+  refreshUptime();
+  metaMic.textContent = "—";
+  micBtn.classList.remove("muted", "listening");
   micBtn.disabled = true;
+  micBtn.setAttribute("aria-label", "Mute microphone");
+  micBtn.title = "Mute microphone";
+  dockHint.textContent = "Microphone access required · English or Portuguese";
   setOrbState("");
 }
 
 function disconnect() {
   cleanup();
   setStatus("Idle", "");
-  connectBtn.textContent = "Connect";
-  connectBtn.classList.remove("active");
+  connectLabel.textContent = "Connect";
+  connectBtn.classList.remove("btn-danger");
+  connectBtn.classList.add("btn-primary");
   connectBtn.disabled = false;
   scheduleFade(addSystemLine("Disconnected."));
 }
@@ -546,7 +784,12 @@ micBtn.addEventListener("click", () => {
   if (!micStream) return;
   micMuted = !micMuted;
   micStream.getTracks().forEach((t) => (t.enabled = !micMuted));
-  micBtn.textContent = micMuted ? "Unmute" : "Mute";
   micBtn.classList.toggle("muted", micMuted);
   micBtn.classList.toggle("listening", !micMuted);
+  const label = micMuted ? "Unmute microphone" : "Mute microphone";
+  micBtn.setAttribute("aria-label", label);
+  micBtn.title = label;
+  dockHint.textContent = micMuted ? "Microphone muted — she can't hear you" : "Listening — just talk";
 });
+
+refreshUptime();

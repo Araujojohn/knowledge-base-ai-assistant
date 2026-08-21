@@ -1,17 +1,22 @@
 import os
 from dotenv import load_dotenv
-from prompts import openai_realtimeapi_prompt, openai_realtimeapi_tool_description , openai_realtimeapi_tool_name, openai_realtimeapi_tool_args_description
+from prompts import (
+    openai_realtimeapi_prompt,
+    openai_realtimeapi_tool_description,
+    openai_realtimeapi_tool_name,
+    openai_realtimeapi_tool_args_description,
+)
 import httpx
 
 
 load_dotenv()
 client = httpx.AsyncClient()
-openai_api_key = os.getenv("OPENAI_API_TOKEN") 
+openai_api_key = os.getenv("OPENAI_API_TOKEN")
 
-async def  create_openai_realtime_session() -> str: 
-    "Calls OpenAi realtime api to initialize a session"
 
-    
+async def create_openai_realtime_session() -> str:
+    "Calls the OpenAI Realtime API to initialize a session"
+
     url = "https://api.openai.com/v1/realtime/client_secrets"
 
     headers = {
@@ -26,8 +31,11 @@ async def  create_openai_realtime_session() -> str:
                 "output": {"voice": "marin"},
                 "input": {
                     "transcription": {"model": "whisper-1"},
-                    "turn_detection": {"type": "server_vad", "silence_duration_ms": 900}
-                }
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "silence_duration_ms": 900,
+                    },
+                },
             },
             "instructions": openai_realtimeapi_prompt,
             "tools": [
@@ -38,22 +46,20 @@ async def  create_openai_realtime_session() -> str:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "request": {"type": "string", "description": openai_realtimeapi_tool_args_description}
+                            "request": {
+                                "type": "string",
+                                "description": openai_realtimeapi_tool_args_description,
+                            }
                         },
-                        "required": ["request"]
-                    }
+                        "required": ["request"],
+                    },
                 }
-            ]
+            ],
         },
-        "expires_after": {"anchor": "created_at", "seconds": 600}
+        "expires_after": {"anchor": "created_at", "seconds": 600},
     }
 
-
-    response = await client.post(
-        url=url,
-        headers=headers,
-        json=params
-    )
+    response = await client.post(url=url, headers=headers, json=params)
 
     response.raise_for_status()
     result = response.json()["value"]

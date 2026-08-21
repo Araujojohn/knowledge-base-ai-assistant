@@ -6,13 +6,14 @@ import psycopg
 
 
 @pytest.fixture
-def test_DB(monkeypatch):
+def test_db(monkeypatch):
     """
-    Prepares the DB for the rag_pipeline test, switchs the db conn to Tests Database
-    cleans the database, returns a Conn to the Tests Database and closes connection after teststing, 
+    Prepare the database for the rag_pipeline test: point the connection env vars at
+    the test database, wipe it clean, hand the open connection to the test, and close
+    it afterwards.
     """
 
-    #muda env vars pro banco de teste
+    # point the connection env vars at the test database
     monkeypatch.setenv("DB_HOST", os.getenv("DB_HOST"))
     monkeypatch.setenv("DB_PORT", os.getenv("DB_PORT"))
     monkeypatch.setenv("DB_NAME", os.getenv("TESTS_DB_NAME"))
@@ -20,18 +21,17 @@ def test_DB(monkeypatch):
     monkeypatch.setenv("DB_PASSWORD", os.getenv("TESTS_DB_PASSWORD"))
 
     conn = psycopg.connect(
-        host = os.getenv("DB_HOST"),
-        dbname = os.getenv("DB_NAME"),
-        user = os.getenv("DB_USER"),
-        password = os.getenv("DB_PASSWORD"),
-        port = os.getenv("DB_PORT")
+        host=os.getenv("DB_HOST"),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT"),
     )
 
-
-    #conecta no banco
+    # create the schema and tables if this database is brand new
     db_init(conn)
 
-    #Checa se Conectou no banco correto (Por Segurança)
+    # safety check: refuse to run unless we really are on the test database
     cur = conn.cursor()
     cur.execute(
         """
@@ -41,8 +41,7 @@ def test_DB(monkeypatch):
     database_name = cur.fetchone()[0]
     assert database_name == "TESTS_DATABASE"
 
-    
-    # limpa o banco com truncate (Podem estar sujas com dado de algum teste anterior)
+    # wipe the tables - they may still hold rows from a previous run
     cur.execute(
         """
         TRUNCATE TABLE knowledge_base_ai.files CASCADE;
@@ -50,7 +49,6 @@ def test_DB(monkeypatch):
         """
     )
     conn.commit()
-    
+
     yield conn
     conn.close()
-  

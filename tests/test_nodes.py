@@ -4,34 +4,44 @@ from nodes import agent_node
 from unittest.mock import patch, AsyncMock
 from langchain_core.messages import AIMessage
 
-#teste de formato de resposta
+
+# response-shape test
 @pytest.mark.asyncio
 @patch("nodes.check_if_model_changed")
-async def test_agent_node_retorna_resposta_no_formato_correto(mock_check_if_model_changed):
-  mock_model = AsyncMock()
-  mock_model.ainvoke.return_value = AIMessage(content="resposta de teste no formato correto")
-  mock_check_if_model_changed.return_value = mock_model
+async def test_agent_node_returns_a_correctly_shaped_response(
+    mock_check_if_model_changed,
+):
+    mock_model = AsyncMock()
+    mock_model.ainvoke.return_value = AIMessage(
+        content="correctly shaped test response"
+    )
+    mock_check_if_model_changed.return_value = mock_model
 
-  mensagem = {"messages": [("human", "oi")]}
+    message = {"messages": [("human", "hi")]}
 
-  resultado = await agent_node(mensagem)
+    result = await agent_node(message)
 
-  assert resultado == {"messages":[AIMessage(content="resposta de teste no formato correto")]}
+    assert result == {"messages": [AIMessage(content="correctly shaped test response")]}
 
 
-
-#teste de fallback erro
+# error-fallback test
 @pytest.mark.asyncio
 @patch("nodes.check_if_model_changed")
-async def test_agent_node_retorna_resposta_fallback(mock_check_if_model_changed):
-  mock_model = AsyncMock()
-  mock_model.ainvoke.side_effect = Exception("erro simulado")
-  mock_check_if_model_changed.return_value = mock_model
+async def test_agent_node_returns_the_fallback_response_on_error(
+    mock_check_if_model_changed,
+):
+    mock_model = AsyncMock()
+    mock_model.ainvoke.side_effect = Exception("simulated failure")
+    mock_check_if_model_changed.return_value = mock_model
 
-  mensagem = {"messages": [("human", "oi")]}
+    message = {"messages": [("human", "hi")]}
 
-  resultado = await agent_node(mensagem)
+    result = await agent_node(message)
 
-  assert resultado == {"messages":[AIMessage(content="Desculpa, tive um erro interno ao processar sua solicitação, tente novamente por favor.")]}
-
-
+    assert result == {
+        "messages": [
+            AIMessage(
+                content="Sorry, I hit an internal error while processing your request. Please try again."
+            )
+        ]
+    }

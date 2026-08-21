@@ -5,25 +5,24 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage
 
-state_com_tools = {
+state_with_tools = {
     "messages": [
-        AIMessage(content="", tool_calls=[
-            {"name": "read", "args": {"path": "algum.md"}, "id": "1"}
-        ])
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "read", "args": {"path": "algum.md"}, "id": "1"}],
+        )
     ]
 }
 
 
-state_sem_tools = {
-     "messages": [
-         AIMessage(content="oi", tool_calls=[])]}
+state_without_tools = {"messages": [AIMessage(content="oi", tool_calls=[])]}
 
 
+def test_check_tool_call_returns_tools_when_the_message_has_a_tool_call():
+    result = check_tool_call(state_with_tools)
+    assert result == "tools"
 
-def test_check_tool_call_retorna_string_tools_quando_existe_tool_na_mensagem():
- resultado = check_tool_call(state_com_tools)
- assert resultado == "tools"
 
-def test_check_tool_call_retorna_END_quando_sem_tool_call_na_mensagem():
- resultado = check_tool_call(state_sem_tools)
- assert resultado == END
+def test_check_tool_call_returns_end_when_the_message_has_no_tool_call():
+    result = check_tool_call(state_without_tools)
+    assert result == END

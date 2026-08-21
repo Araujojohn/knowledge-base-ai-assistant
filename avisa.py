@@ -8,25 +8,21 @@ load_dotenv()
 
 avisa_token = os.getenv("AVISA_API_TOKEN")
 
+
 async def send_to_whatsapp(message: dict, number: int):
 
- url = "https://www.avisaapi.com.br/api/actions/sendMessage"
+    url = "https://www.avisaapi.com.br/api/actions/sendMessage"
 
+    formatted_response = message.replace("**", "*")
 
- formated_response = message.replace("**", "*")
+    payload = json.dumps({"number": f"{number}", "message": f"{formatted_response}"})
 
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {avisa_token}",
+    }
 
- payload = json.dumps({
-   "number": f"{number}",
-   "message": f"{formated_response}"
- })
+    response = await client.post(url, headers=headers, data=payload)
+    response.raise_for_status()
 
- headers = {
-   "Content-Type": "application/json",
-   "Authorization": f"Bearer {avisa_token}"
- }
- 
- response =  await client.post(url, headers=headers, data=payload)
- response.raise_for_status()
-
- return response
+    return response

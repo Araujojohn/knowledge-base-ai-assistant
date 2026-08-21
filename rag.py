@@ -11,24 +11,24 @@ from openai import OpenAI
 load_dotenv()
 
 
-
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 owner = os.getenv("GITHUB_OWNER")
 repo = os.getenv("GITHUB_REPO")
 
 openai_api_key = os.getenv("OPENAI_API_TOKEN")
 
-#  Conexão com o Banco de dados & checagem/criação das tabelas)
-def db_init(conn) -> bool: 
+
+# Database connection plus schema/table check and creation
+def db_init(conn) -> bool:
     """
     Connects to the Database, checks tables and file data
-    creates schema, vector extension, tables if its the initial synnc
+    creates the schema, the vector extension and the tables on the initial sync
     """
 
     cur = conn.cursor()
 
     cur.execute(
-       """
+        """
        CREATE SCHEMA IF NOT EXISTS knowledge_base_ai;
 
        CREATE EXTENSION IF NOT EXISTS vector SCHEMA knowledge_base_ai;
@@ -61,40 +61,35 @@ def db_init(conn) -> bool:
     )
 
     cur.execute(
-       """
+        """
        SELECT *
        FROM knowledge_base_ai.files
        """
     )
 
-
     data = cur.fetchall()
     conn.commit()
     if data == []:
-     initial_sync = True
+        initial_sync = True
     else:
-     initial_sync = False
+        initial_sync = False
 
     return initial_sync
 
 
-## Puxar Arquivos (Sync Inicial) e armazenar commit atual
+## Pull every file (initial sync) and store the current commit sha
 def initial_github_pull():
 
     url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/main?recursive=1"
 
     headers = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.json"
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.json",
     }
 
-    params={"ref": "main"}
+    params = {"ref": "main"}
 
-    response = requests.get(
-        url = url,
-        headers = headers,
-        params = params
-    )
+    response = requests.get(url=url, headers=headers, params=params)
 
     response.raise_for_status()
     data = response.json()
@@ -102,199 +97,209 @@ def initial_github_pull():
     files = {}
 
     for item in data["tree"]:
-     if item["type"] == "blob" and item["path"].endswith(".md"):
+        if item["type"] == "blob" and item["path"].endswith(".md"):
+            response = requests.get(url=item["url"], headers=headers, params=params)
 
-        response = requests.get(
-         url = item["url"],
-         headers = headers,
-         params = params
-        )
+            response.raise_for_status()
+            encoded_content = response.json()
+            content = base64.b64decode(encoded_content["content"]).decode("utf-8")
 
-        response.raise_for_status()
-        encoded_content = response.json()
-        content = base64.b64decode(encoded_content["content"]).decode("utf-8")
+            files[item["path"]] = {
+                "sha": item["sha"],
+                "url": item["url"],
+                "content": content,
+            }
 
-        files[item["path"]] = {"sha": item["sha"], "url": item["url"], "content": content}
-
-    latest_commit_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/commits/main"
+    latest_commit_endpoint_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/commits/main"
+    )
 
     headers = {
-      "Authorization": f"Bearer {GITHUB_TOKEN}",
-      "Accept": "application/vnd.github.json"
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.json",
     }
 
-    params={"ref": "main"}
+    params = {"ref": "main"}
 
     response = requests.get(
-     url = latest_commit_endpoint_url,
-     headers = headers,
-     params = params
+        url=latest_commit_endpoint_url, headers=headers, params=params
     )
     response.raise_for_status()
-    sha_novo = response.json()["sha"]
+    new_sha = response.json()["sha"]
 
-    return files, sha_novo
+    return files, new_sha
 
 
 def pull_github_diff(conn):
-  files = {}
-  cur = conn.cursor()
+    files = {}
+    cur = conn.cursor()
 
-  cur.execute(
-   """
+    cur.execute(
+        """
    SELECT last_sync_sha
    FROM knowledge_base_ai.pipeline
    ORDER BY id DESC
    LIMIT 1
    """
-   )
-  last_sync_sha = cur.fetchone()[0]
+    )
+    last_sync_sha = cur.fetchone()[0]
 
-  latest_commit_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/commits/main"
+    latest_commit_endpoint_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/commits/main"
+    )
 
-  headers = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.json"
-  }
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.json",
+    }
 
-  params={"ref": "main"}
+    params = {"ref": "main"}
 
-  response = requests.get(
-   url = latest_commit_endpoint_url,
-   headers = headers,
-   params = params
-  )
-  response.raise_for_status()
-  sha_novo = response.json()["sha"]
+    response = requests.get(
+        url=latest_commit_endpoint_url, headers=headers, params=params
+    )
+    response.raise_for_status()
+    new_sha = response.json()["sha"]
 
-  diff_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{last_sync_sha}...{sha_novo}"
+    diff_endpoint_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{last_sync_sha}...{new_sha}"
 
-  response = requests.get(
-   url = diff_endpoint_url,
-   headers = headers,
-   params = params
-  )
-  response.raise_for_status()
+    response = requests.get(url=diff_endpoint_url, headers=headers, params=params)
+    response.raise_for_status()
 
-  diff = response.json()["files"]
-  deleted_files = []
+    diff = response.json()["files"]
+    deleted_files = []
 
-  for diff_files in diff:
-    if diff_files["status"] == "removed":
-     deleted_files.append(diff_files["filename"])
-    else:
-     url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{diff_files["sha"]}"
-     response = requests.get(
-       url = url,
-       headers = headers,
-       params = params
-      )
+    for diff_files in diff:
+        if diff_files["status"] == "renamed":
+            deleted_files.append(diff_files["previous_filename"])
+        if diff_files["status"] == "removed":
+            deleted_files.append(diff_files["filename"])
+        elif diff_files["filename"].endswith(".md"):
+            url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{diff_files['sha']}"
+            response = requests.get(url=url, headers=headers, params=params)
 
-     response.raise_for_status()
-     encoded_content = response.json()
-     content = base64.b64decode(encoded_content["content"]).decode("utf-8")
-     files[diff_files["filename"]] = {"sha": diff_files["sha"], "url": diff_files["blob_url"], "content": content}
+            response.raise_for_status()
+            encoded_content = response.json()
+            content = base64.b64decode(encoded_content["content"]).decode("utf-8")
+            files[diff_files["filename"]] = {
+                "sha": diff_files["sha"],
+                "url": diff_files["blob_url"],
+                "content": content,
+            }
+        
 
-  conn.commit()
+    conn.commit()
 
-  return files, sha_novo, deleted_files
+    return files, new_sha, deleted_files
 
 
 def chunk(files):
 
- max_characters = 1500
- splitter = MarkdownSplitter(max_characters)
+    max_characters = 1500
+    splitter = MarkdownSplitter(max_characters)
 
-
- for path, file_data in files.items():
-   transformed_chunks = []
-   last_seen_header = ""
-   chunks = splitter.chunks(file_data["content"])
-   for indice, chunk in enumerate(chunks):
-     primeira_linha = chunk.splitlines()[0]  #extrair a primeira linha
-     if primeira_linha.startswith(("#", "##", "###")): #Verificar se a primeira linha é um header
-       last_seen_header = primeira_linha #se for, extrair e salvar
-       if chunk == primeira_linha:
-         pass
-       else:
-        transformed_chunks.append({"header": last_seen_header, "content": chunk.split("\n", 1)[1]})
-     elif indice == 0 and chunk.strip().startswith("---"):
-       pass
-     else:
-      transformed_chunks.append({"header": last_seen_header,"content": chunk})
-   if transformed_chunks == []:
-    pass
-   else:
-    files[path]["chunks"] = transformed_chunks
- return files
+    for path, file_data in files.items():
+        transformed_chunks = []
+        last_seen_header = ""
+        chunks = splitter.chunks(file_data["content"])
+        for index, chunk in enumerate(chunks):
+            first_line = chunk.splitlines()[0]  # take the first line
+            if first_line.startswith(
+                ("#", "##", "###")
+            ):  # check whether the first line is a header
+                last_seen_header = (
+                    first_line  # if it is, keep it as the last seen header
+                )
+                if chunk == first_line:
+                    pass
+                else:
+                    transformed_chunks.append(
+                        {"header": last_seen_header, "content": chunk.split("\n", 1)[1]}
+                    )
+            elif index == 0 and chunk.strip().startswith("---"):
+                pass
+            else:
+                transformed_chunks.append(
+                    {"header": last_seen_header, "content": chunk}
+                )
+        if transformed_chunks == []:
+            pass
+        else:
+            files[path]["chunks"] = transformed_chunks
+    return files
 
 
 def generate_embeddings(files):
-  client = OpenAI(api_key=openai_api_key)
+    client = OpenAI(api_key=openai_api_key)
 
-  for path, file_data in files.items():
-    if file_data.get("chunks"):
-     chunks_embeddings = []
-     textos = []
-     for c in file_data["chunks"]:
-       textos.append(f"{c['header']}\n{c['content']}")
+    for path, file_data in files.items():
+        if file_data.get("chunks"):
+            chunks_embeddings = []
+            texts = []
+            for c in file_data["chunks"]:
+                texts.append(f"{c['header']}\n{c['content']}")
 
-     response = client.embeddings.create(
-     model="text-embedding-3-small",
-     input=textos
-     )
-     embeddings = response.data
-     for embedding_obj in embeddings:
-      chunks_embeddings.append(embedding_obj.embedding)
-     files[path]["chunks_embeddings"] = chunks_embeddings
+            response = client.embeddings.create(
+                model="text-embedding-3-small", input=texts
+            )
+            embeddings = response.data
+            for embedding_obj in embeddings:
+                chunks_embeddings.append(embedding_obj.embedding)
+            files[path]["chunks_embeddings"] = chunks_embeddings
 
-  return files
+    return files
 
 
 def sync_to_postgres(files, conn, deleted_files=None):
-  cur = conn.cursor()
+    cur = conn.cursor()
 
-  files_table_data = []
-  if deleted_files == None:
-    deleted_files = []
+    files_table_data = []
+    if deleted_files == None:
+        deleted_files = []
 
-  for path, file_data in files.items():
-   files_table_data.append((path, file_data["sha"]))
+    for path, file_data in files.items():
+        files_table_data.append((path, file_data["sha"]))
 
-
-  cur.executemany(
-   """
+    cur.executemany(
+        """
    INSERT INTO knowledge_base_ai.files (path, sha)
    VALUES (%s, %s)
    ON CONFLICT (path)
    DO UPDATE SET
    sha = EXCLUDED.sha
    """,
-   files_table_data
-  )
+        files_table_data,
+    )
 
-  all_paths = files.keys()
-  cur.execute(
-   """
+    all_paths = files.keys()
+    cur.execute(
+        """
    SELECT id, path
    FROM knowledge_base_ai.files
    WHERE path = ANY(%s)
    """,
-   (list(all_paths),)
-  )
-  resultado = cur.fetchall()
-  path_to_id = {}
-  for file_id, path in resultado:
-    path_to_id[path] = file_id
+        (list(all_paths),),
+    )
+    result = cur.fetchall()
+    path_to_id = {}
+    for file_id, path in result:
+        path_to_id[path] = file_id
 
-  chunks_table_data = []
-  for path, file_data in files.items():
-   for indice, chunk in enumerate(file_data.get("chunks", [])):
-    chunks_table_data.append((path_to_id[path], chunk["header"], chunk["content"], file_data["chunks_embeddings"][indice], indice))
+    chunks_table_data = []
+    for path, file_data in files.items():
+        for index, chunk in enumerate(file_data.get("chunks", [])):
+            chunks_table_data.append(
+                (
+                    path_to_id[path],
+                    chunk["header"],
+                    chunk["content"],
+                    file_data["chunks_embeddings"][index],
+                    index,
+                )
+            )
 
-
-  cur.executemany(
-     """
+    cur.executemany(
+        """
      INSERT INTO knowledge_base_ai.chunks (file_id, header, content, embedding, chunk_index)
      VALUES (%s, %s, %s, %s, %s)
      ON CONFLICT (file_id, chunk_index)
@@ -304,65 +309,61 @@ def sync_to_postgres(files, conn, deleted_files=None):
      embedding = EXCLUDED.embedding,
      chunk_index = EXCLUDED.chunk_index
      """,
-     chunks_table_data
+        chunks_table_data,
     )
 
-  cur.execute(
-     """
+    cur.execute(
+        """
      DELETE FROM knowledge_base_ai.files
      WHERE path = ANY(%s)
      """,
-     (list(deleted_files),)
-     )
+        (list(deleted_files),),
+    )
 
-  conn.commit()
+    conn.commit()
 
 
-def update_last_sync_sha(conn, sha_novo):
-  cur = conn.cursor()
+def update_last_sync_sha(conn, new_sha):
+    cur = conn.cursor()
 
-  last_sync_sha = (sha_novo,)
+    last_sync_sha = (new_sha,)
 
-  cur.execute(
-    """
+    cur.execute(
+        """
     INSERT INTO knowledge_base_ai.pipeline (last_sync_sha, last_sync_date)
     VALUES (%s, now())
     """,
-    last_sync_sha
-  )
+        last_sync_sha,
+    )
 
-  conn.commit()
+    conn.commit()
 
 
 def rag_pipeline():
-  """
-  Orchestrates the complete Rag pipeline, Retrieval -> Chunking -> Embedding -> Database 
-  """
-  conn = None
-  try:
-   conn = psycopg.connect(
-    host = os.getenv("DB_HOST"),
-    dbname = os.getenv("DB_NAME"),
-    user = os.getenv("DB_USER"),
-    password = os.getenv("DB_PASSWORD"),
-    port = os.getenv("DB_PORT")
-   )
-   initial_sync = db_init(conn)
-   if initial_sync == True:
-     files, sha_novo = initial_github_pull()
-     deleted_files = []
-   else:
-     files, sha_novo, deleted_files = pull_github_diff(conn)
-   chunk(files)
-   generate_embeddings(files)
-   sync_to_postgres(files, conn, deleted_files)
-   update_last_sync_sha(conn, sha_novo)
-   response = "Sucesso no Sync"
-  except Exception as error:
-   response = f"Erro ao rodar o sync:{error}"
-  finally:
-   if conn is not None:
-    conn.close()
-  return response
-
-
+    """
+    Orchestrates the complete Rag pipeline, Retrieval -> Chunking -> Embedding -> Database
+    """
+    conn = None
+    try:
+        conn = psycopg.connect(
+            host=os.getenv("DB_HOST"),
+            dbname=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            port=os.getenv("DB_PORT"),
+        )
+        initial_sync = db_init(conn)
+        if initial_sync == True:
+            files, new_sha = initial_github_pull()
+            deleted_files = []
+        else:
+            files, new_sha, deleted_files = pull_github_diff(conn)
+        chunk(files)
+        generate_embeddings(files)
+        sync_to_postgres(files, conn, deleted_files)
+        update_last_sync_sha(conn, new_sha)
+        response = "Sync successful"
+    finally:
+        if conn is not None:
+            conn.close()
+    return response

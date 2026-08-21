@@ -4,11 +4,5 @@ from dotenv import load_dotenv
 from typing import TypedDict, Annotated
 
 
-
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages()]
-
-
-
-
-

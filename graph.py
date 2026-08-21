@@ -16,14 +16,15 @@ GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 def check_tool_call(state: AgentState):
-    ultima_mensagem = state["messages"][-1]
-    if ultima_mensagem.tool_calls != []:
-       resultado = "tools"
+    last_message = state["messages"][-1]
+    if last_message.tool_calls != []:
+        result = "tools"
     else:
-       resultado = END
-    return resultado
+        result = END
+    return result
 
-#Builds the graph map and compiles it
+
+# Builds the graph map and compiles it
 builder = StateGraph(AgentState)
 builder.set_entry_point("AI_Agent")
 builder.add_node("AI_Agent", agent_node)
@@ -32,32 +33,57 @@ builder.add_conditional_edges("AI_Agent", check_tool_call)
 builder.add_edge("tools", "AI_Agent")
 graph = builder.compile(checkpointer=InMemorySaver())
 
-##Send Message to AI, and Unpack/Format Reponse in a clear, stream (thinking, tool_use or text repsonse)
+
+## Sends a message to the agent and streams the response back, unpacked into
+## clearly typed chunks (thinking, tool_use or final text).
 async def send_message_to_ai(message: str, thread_id):
-  try:
-   async for event in graph.astream(
-    input={"messages": [message]},
-    stream_mode="updates",
-    config={"recursion_limit": 30, "configurable": {"thread_id": f"{thread_id}"} }
-    ):
-    for aimessage in event.values():
-     for msg in aimessage["messages"]:
-      if msg.type == "ai":
-       if isinstance(msg.content, str):
-        print({"Type": "final_aswer", "content":f"{msg.content}"})
-        yield {"Type": "final_aswer", "content":f"{msg.content}"}
-       else:
-        for item in msg.content:
-         if item["type"] == "text":
-          print({"Type": "final_aswer", "content": f"{item["text"]}"})
-          yield {"Type": "final_aswer", "content": f"{item["text"]}"}
-         elif item["type"] == "thinking":
-          print({"Type": "thinking", "content": f"Pensando..."})
-          yield {"Type": "thinking", "content": f"Pensando..."}
-         elif item["type"] == "tool_use":
-          print(f"{item["name"]} {item["input"]}\n")
-          yield {"Type": "tool_use", "content":f"{item["name"]} {item["input"]}"}
-  except GraphRecursionError as erro:
-   print({"type": "error", "content": f"Antingi o Limite de tentativas, quer tentar por um outro caminho?\n"})
-   yield {"Type": "error", "content": f"Antingi o Limite de tentativas, quer tentar por um outro caminho?"}
- 
+    try:
+        async for event in graph.astream(
+            input={"messages": [message]},
+            stream_mode="updates",
+            config={
+                "recursion_limit": 30,
+                "configurable": {"thread_id": f"{thread_id}"},
+            },
+        ):
+            for aimessage in event.values():
+                for msg in aimessage["messages"]:
+                    if msg.type == "ai":
+                        if isinstance(msg.content, str):
+                            print({"Type": "final_answer", "content": f"{msg.content}"})
+                            yield {"Type": "final_answer", "content": f"{msg.content}"}
+                        else:
+                            for item in msg.content:
+                                if item["type"] == "text":
+                                    print(
+                                        {
+                                            "Type": "final_answer",
+                                            "content": f"{item['text']}",
+                                        }
+                                    )
+                                    yield {
+                                        "Type": "final_answer",
+                                        "content": f"{item['text']}",
+                                    }
+                                elif item["type"] == "thinking":
+                                    print(
+                                        {"Type": "thinking", "content": "Thinking..."}
+                                    )
+                                    yield {"Type": "thinking", "content": "Thinking..."}
+                                elif item["type"] == "tool_use":
+                                    print(f"{item['name']} {item['input']}\n")
+                                    yield {
+                                        "Type": "tool_use",
+                                        "content": f"{item['name']} {item['input']}",
+                                    }
+    except GraphRecursionError as error:
+        print(
+            {
+                "Type": "error",
+                "content": "Reached the retry limit. Want to try a different angle?\n",
+            }
+        )
+        yield {
+            "Type": "error",
+            "content": "Reached the retry limit. Want to try a different angle?",
+        }

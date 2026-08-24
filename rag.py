@@ -192,6 +192,19 @@ def pull_github_diff(conn):
 
     return files, new_sha, deleted_files
 
+def clean_frontmatter(chunk):
+    if chunk.count("---") >= 2:
+        frontmatter_start = chunk.find("---")
+        frontmatter_finish = chunk.find("---", frontmatter_start + 3)
+        chunk_content = chunk[frontmatter_finish + 3:].strip()
+        return chunk_content
+    else:
+        return chunk
+
+
+
+
+
 
 def chunk(files):
 
@@ -217,7 +230,13 @@ def chunk(files):
                         {"header": last_seen_header, "content": chunk.split("\n", 1)[1]}
                     )
             elif index == 0 and chunk.strip().startswith("---"):
-                pass
+                frontmatter_clean_chunk = clean_frontmatter(chunk)
+                if len(frontmatter_clean_chunk) <3:
+                    pass
+                else:
+                    transformed_chunks.append(
+                        {"header": last_seen_header, "content": frontmatter_clean_chunk}
+                    )
             else:
                 transformed_chunks.append(
                     {"header": last_seen_header, "content": chunk}

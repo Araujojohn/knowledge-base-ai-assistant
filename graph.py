@@ -1,14 +1,14 @@
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
-from langgraph.errors import GraphRecursionError
-from langgraph.checkpoint.memory import InMemorySaver
-from dotenv import load_dotenv
 import os
-from state import AgentState
-from nodes import agent_node
-from tools import tools
-import json
 
+from dotenv import load_dotenv
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import GraphRecursionError
+from langgraph.graph import END, StateGraph
+from langgraph.prebuilt import ToolNode
+
+from nodes import agent_node
+from state import AgentState
+from tools import tools
 
 load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -49,34 +49,29 @@ async def send_message_to_ai(message: str, thread_id):
             for aimessage in event.values():
                 for msg in aimessage["messages"]:
                     if msg.type == "ai":
-                        if isinstance(msg.content, str):
-                            print({"Type": "final_answer", "content": f"{msg.content}"})
-                            yield {"Type": "final_answer", "content": f"{msg.content}"}
-                        else:
-                            for item in msg.content:
-                                if item["type"] == "text":
-                                    print(
-                                        {
-                                            "Type": "final_answer",
-                                            "content": f"{item['text']}",
-                                        }
-                                    )
-                                    yield {
+                        is_final = not msg.tool_calls
+                        for block in msg.content_blocks:
+                            if block["type"] == "text" and is_final:
+                                print(
+                                    {
                                         "Type": "final_answer",
-                                        "content": f"{item['text']}",
+                                        "content": f"{block['text']}",
                                     }
-                                elif item["type"] == "thinking":
-                                    print(
-                                        {"Type": "thinking", "content": "Thinking..."}
-                                    )
-                                    yield {"Type": "thinking", "content": "Thinking..."}
-                                elif item["type"] == "tool_use":
-                                    print(f"{item['name']} {item['input']}\n")
-                                    yield {
-                                        "Type": "tool_use",
-                                        "content": f"{item['name']} {item['input']}",
-                                    }
-    except GraphRecursionError as error:
+                                )
+                                yield {
+                                    "Type": "final_answer",
+                                    "content": f"{block['text']}",
+                                }
+                            elif block["type"] == "reasoning":
+                                print({"Type": "thinking", "content": "Thinking..."})
+                                yield {"Type": "thinking", "content": "Thinking..."}
+                            elif block["type"] == "tool_call":
+                                print(f"{block['name']} {block['args']}\n")
+                                yield {
+                                    "Type": "tool_use",
+                                    "content": f"{block['name']} {block['args']}",
+                                }
+    except GraphRecursionError:
         print(
             {
                 "Type": "error",

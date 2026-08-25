@@ -65,19 +65,17 @@ The retrieval pipeline (sync → retrieve → rerank → respond) has been exerc
 Answer quality is measured, not assumed. Twenty hand-written questions run
 through the real graph — real retrieval, real model, real tools — and an LLM
 judge grades each answer against a written reference. The most recent run scored
-13/20 at roughly 8 seconds per question.
+11/20 at roughly 8 seconds per question.
 
-The number is deliberately honest about what it cannot yet claim. The agent
-samples at `temperature=0.7`, so the same question takes a different path on
-every run: two runs 22 minutes apart differed by 30k input tokens, and one
-question flipped from correct to incorrect because the agent retrieved different
-chunks — nothing in the code had changed. With a single attempt per question, a
-score movement can be a real regression or just the dice.
+The questions are deliberately ones a general-purpose model cannot answer on
+its own: they ask about the contents of a private vault. The two most valuable
+ones have no answer at all — a secret the vault is designed never to store, and
+a client with no file. Both are correct only when the agent says it doesn't have
+them, which is the failure mode that matters most and the one a unit test can't
+reach.
 
-The harness, the judge's rubric and the open limitations are documented in
-[`evals/README.md`](evals/README.md). Retrieval is still only observed through
-the final answer; Precision@K, Recall@K and MRR against the `search` tool alone
-are the next step.
+The harness and the judge's rubric are documented in
+[`evals/README.md`](evals/README.md).
 
 
 ## Architecture
@@ -207,12 +205,6 @@ A few things that only clicked once I'd actually built them, not while reading a
 
 
 ## Next Steps
-
-- **Measure retrieval on its own.**
-  The golden-set evaluation grades the final answer, which mixes retrieval quality with generation quality. Precision@K, Recall@K and MRR against the `search` tool would separate the two.
-
-- **Make eval runs comparable.**
-  Pin `temperature=0` for evaluation, or average several attempts per question, so a score change reflects a code change rather than sampling noise.
 
 - **Turn the agent from a knowledge assistant into an action agent.**
   Extend the toolset with web search, code execution, external APIs and automation capabilities so it can not only retrieve information, but also perform useful tasks on the user's behalf.

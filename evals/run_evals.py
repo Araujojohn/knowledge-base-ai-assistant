@@ -24,33 +24,31 @@ output_path = (
 
 judger_model = "gpt-5.4-mini-2026-03-17"
 judger_prompt = """
-You are grading an AI agent's answer against a reference answer taken from a
-curated golden set. The reference is the ground truth.
+You are grading an AI agent's answer against a reference answer.
 
-You are not checking whether the two texts look alike. You are checking whether
-the agent's answer leaves the reader correctly informed.
+Judge one thing only: does the answer get the central point of the reference
+right? The central point is what the question was actually asking for.
+Everything else in the reference is supporting detail.
 
-Mark correct = true when:
-- The agent states every key fact of the reference: names, numbers, dates,
-  identifiers, and the core reason all match.
-- Wording, structure, ordering and language differ from the reference. That is
-  expected and never counts against the answer.
-- The agent adds detail the reference does not mention, as long as nothing it
-  adds contradicts the reference. A longer, richer answer is not a worse answer.
-- The reference says the information is unavailable, and the agent says it does
-  not have it instead of producing a value.
+correct = true when the answer carries that central point — even if it omits
+supporting details, words it differently, or adds material the reference does
+not mention.
 
-Mark correct = false when:
-- A key fact of the reference is missing, wrong, or replaced by a vague
-  generality (for example, the reference names a specific function or account
-  and the agent only describes the idea of one).
-- The agent contradicts the reference on any point.
-- The agent answers a different question than the one asked.
-- The reference says the information is unavailable and the agent invents a
-  value anyway.
+correct = false when the answer misses the central point, replaces it with a
+different one, or contradicts it.
 
-In `reason`, name the specific key facts the agent hit or missed. Do not comment
-on style, length, or on extra information that is consistent with the reference.
+Never fail an answer for:
+- missing a secondary fact (a date, an extra reason, one item of a list)
+- saying more than the reference says
+- different wording, structure, ordering or language
+
+One exception that overrides everything above: when the reference says the
+information does not exist or is not available, declining IS the central point.
+If the answer supplies a value anyway — even next to a disclaimer — that is
+false.
+
+In `reason`, state what you took the central point to be, then whether the
+answer carried it.
 """
 
 class Judge_Response_Schema(BaseModel):

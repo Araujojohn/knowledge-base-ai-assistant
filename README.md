@@ -9,7 +9,7 @@ A personal AI with long-term memory, hybrid retrieval, and direct read/write acc
 
 **Solution:** A personal AI with long-term memory, fast hybrid retrieval, and direct read/write access to a GitHub knowledge base.
 
-**Result:** Production deployment · 120+ indexed files · 430+ searchable chunks · automatic GitHub sync · WhatsApp interface.
+**Result:** Production deployment · 120+ indexed files · 430+ searchable chunks · automatic GitHub sync · WhatsApp and voice interfaces.
 
 ## The Problem
 
@@ -110,8 +110,63 @@ coverage** counts how many of the reference's facts the answer actually carried
 — eighty-two facts across twenty questions, four times the resolution, so it
 registers movement a per-question verdict is too coarse to show.
 
-Every run also records latency, token cost and the resolved model version for
-each question. Swapping the model is a measurement, not a guess.
+### Choosing a model
+
+The agent's model is read from Postgres at runtime, so swapping it is a config
+change rather than a deploy — which makes the choice cheap to measure instead of
+argue about. Both rows below are real runs over the same twenty questions:
+
+| Model | Accuracy | Fact coverage | Latency | Cost per run |
+|---|---|---|---|---|
+| Gemini 3.5 Flash Lite *(in production)* | 90% | 77% | **7.9s** | **$0.06** |
+| Claude Sonnet 5 | 95% | 88% | 19.7s | $0.94 |
+
+Accuracy is the least interesting column here. One question apart on a
+twenty-question set is noise, and reporting it as a win would be overreading my
+own data. Fact coverage is where the two actually separate — eleven points
+across eighty-two facts, at four times the resolution. The models are about
+equally likely to answer correctly; Sonnet's answers simply carry more of the
+detail.
+
+Sixteen times the cost buys that, and two and a half times the latency — which
+is the part that decides it. This agent also answers by voice, and twenty
+seconds of silence while it thinks is not a conversation. The Realtime layer
+keeps the session alive during a lookup, but nothing makes a twenty-second pause
+feel deliberate. Latency stopped being a preference the moment the agent got a
+microphone.
+
+One question failed on **both** models: asked for a record that does not exist,
+the agent said so and then listed neighbouring records anyway. A failure that
+survives a model swap is not a model problem — it is the prompt, and no amount
+of paying more would have fixed it. Finding that is what the harness is for.
+
+## Voice
+
+The agent also answers out loud. A browser widget opens a WebRTC connection to
+the OpenAI Realtime API — microphone in, speech out, interruption handled
+natively — and it talks to the same LangGraph agent that answers on WhatsApp.
+
+**The voice model is a peripheral, not the brain.** It does audio: speech to
+text, text to speech, turn detection, barge-in. When it needs to know something
+it calls a function, and that function runs the real agent — same graph, same
+tools, same retrieval, same conversation memory. Handing the whole exchange to a
+speech-to-speech model would have been quicker to build and would have thrown
+away everything this repository is.
+
+That function call is asynchronous, which is what keeps the conversation from
+stalling on a lookup. The call sits pending while the agent searches, the user
+can keep talking through it, and the result is injected back into the live
+session when it lands.
+
+Every public route is rate limited by client IP, and the widget's whole origin
+sits behind HTTP Basic Auth. Resolving that IP behind a reverse proxy is the
+part worth naming: trusting `X-Forwarded-For` as sent lets any client forge a
+different address per request and walk straight through a per-IP limit, so the
+middleware trusts only the container network the proxy actually sits on.
+
+The browser client under `mnemosyne/` was built with Claude Code. The backend it
+depends on is mine — and that split was deliberate: the view layer is the
+cheapest part of this project to delegate.
 
 ## Architecture
 
@@ -128,6 +183,10 @@ flowchart LR
 
     CHAT --> NODE
     NODE --> CHAT --> N8N --> WA
+
+    MIC["Browser widget<br/>(WebRTC)"] <--> RT["OpenAI Realtime API<br/>audio only"]
+    RT -- "function call" --> QUERY["POST /realtime/query"]
+    QUERY --> NODE
 
     TOOLS --> GH[(GitHub<br/>vault)]
     TOOLS --> DB[(Postgres<br/>+ pgvector)]
@@ -147,6 +206,8 @@ flowchart LR
 ├── prompts.py      # the agent's system prompt
 ├── avisa.py        # delivers the response back to WhatsApp
 ├── state.py         # the graph's state schema
+├── openai_realtime.py  # mints ephemeral Realtime API sessions for the widget
+├── mnemosyne/       # the voice widget (browser side)
 ├── tests/           # pytest, including one real integration test
 └── evals/           # golden-set evaluation harness (see evals/README.md)
 ```
@@ -185,7 +246,7 @@ A few choices that weren't obvious, and why I made them:
 | Chunking | `semantic-text-splitter` (Markdown-aware) |
 | Source of truth | GitHub Contents / Trees / Compare API |
 | Testing | pytest, `pytest-asyncio` |
-| Delivery | WhatsApp via AVISA API |
+| Delivery | WhatsApp via AVISA API · browser voice widget (OpenAI Realtime API over WebRTC) |
 | Orchestration | n8n (routing the WhatsApp webhook) |
 | Deploy | Docker + CapRover, GitHub Actions CI |
 

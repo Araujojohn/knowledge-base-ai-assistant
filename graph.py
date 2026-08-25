@@ -10,6 +10,8 @@ from nodes import agent_node
 from state import AgentState
 from tools import tools
 
+from langchain_core.callbacks import BaseCallbackHandler
+
 load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -52,33 +54,27 @@ async def send_message_to_ai(message: str, thread_id):
                         is_final = not msg.tool_calls
                         for block in msg.content_blocks:
                             if block["type"] == "text" and is_final:
-                                print(
-                                    {
-                                        "Type": "final_answer",
-                                        "content": f"{block['text']}",
-                                    }
-                                )
                                 yield {
-                                    "Type": "final_answer",
+                                    "type": "final_answer",
                                     "content": f"{block['text']}",
                                 }
                             elif block["type"] == "reasoning":
-                                print({"Type": "thinking", "content": "Thinking..."})
-                                yield {"Type": "thinking", "content": "Thinking..."}
+                                yield {"type": "thinking", "content": "Thinking..."}
                             elif block["type"] == "tool_call":
-                                print(f"{block['name']} {block['args']}\n")
                                 yield {
-                                    "Type": "tool_use",
+                                    "type": "tool_use",
                                     "content": f"{block['name']} {block['args']}",
                                 }
+                        if msg.usage_metadata:
+                            yield {"type": "metadata", "content": msg.usage_metadata, "model": msg.response_metadata.get("model_name")}                      
     except GraphRecursionError:
         print(
             {
-                "Type": "error",
+                "type": "error",
                 "content": "Reached the retry limit. Want to try a different angle?\n",
             }
         )
         yield {
-            "Type": "error",
+            "type": "error",
             "content": "Reached the retry limit. Want to try a different angle?",
         }

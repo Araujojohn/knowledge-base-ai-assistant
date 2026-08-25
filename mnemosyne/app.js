@@ -394,7 +394,7 @@ async function fetchEphemeralKey() {
 }
 
 // Calls our own backend, which runs the LangGraph agent (RAG search included).
-// The backend streams NDJSON — one {"Type": ..., "content": ...} object per
+// The backend streams NDJSON — one {"type": ..., "content": ...} object per
 // line (see send_message_to_ai() in graph.py). "final_answer"/"error" chunks
 // are the answer handed back to Mnemosyne. "thinking"/"tool_use" chunks are
 // the agent's internal progress (covers every tool it calls along the way —
@@ -422,10 +422,10 @@ async function queryKnowledgeBase(request, onAnswer, onProgress) {
     } catch {
       return; // malformed/partial line — ignore rather than crash the stream
     }
-    if (chunk.Type === "final_answer" || chunk.Type === "error") {
+    if (chunk.type === "final_answer" || chunk.type === "error") {
       finalAnswer += chunk.content;
       onAnswer?.(finalAnswer);
-    } else if (chunk.Type === "tool_use") {
+    } else if (chunk.type === "tool_use") {
       // "thinking" chunks are dropped here — always the same "Thinking..."
       // filler (Portuguese, no real content); tool_use carries actual
       // signal (which tool, which args), worth relaying.

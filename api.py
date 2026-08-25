@@ -83,9 +83,10 @@ async def health(request: Request):
 @limiter.limit("10/minute")
 async def chat(request: Request, message: ChatRequest):
     async for airesponse in send_message_to_ai(message.message, message.reply_to):
-        await avisa.send_to_whatsapp(
-            message=airesponse["content"], number=message.reply_to
-        )
+        if airesponse["type"] != "metadata":
+            await avisa.send_to_whatsapp(
+                message=airesponse["content"], number=message.reply_to
+            )
     return {"message": f"AI successfully responded to {message.reply_to}"}
 
 

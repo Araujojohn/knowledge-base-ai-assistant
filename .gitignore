@@ -1,5 +1,6 @@
 .env
 .pytest_cache
+.ruff_cache/
 __pycache__/
 *.pyc
 venv/
@@ -9,3 +10,8 @@ JOURNAL.md
 LEARNINGS.md
 get_gh_files example
 readme
+
+# Eval data — real answers about a private vault (infra IPs, client account
+# IDs, personal decisions). The harness is public; the data never is.
+evals/runs/
+evals/v1_golden_set.json

@@ -58,9 +58,26 @@ Current state:
 
 The retrieval pipeline (sync → retrieve → rerank → respond) has been exercised end-to-end, including an integration test that inserts a file containing a unique secret phrase and verifies that hybrid retrieval successfully finds the correct chunk using real PostgreSQL, embedding, and reranking services.
 
-Retrieval quality has not yet been evaluated formally. Chunking strategy and retrieval parameters were tuned against real-world usage, but no Precision@K, Recall@K, or MRR benchmark currently exists. That work is planned in the Next Steps section.
-
 ![A real WhatsApp exchange: asking the agent for a trip summary and getting decisions pulled straight from the vault](docs/whatsapp-example.jpeg)
+
+## Evaluation
+
+Answer quality is measured, not assumed. Twenty hand-written questions run
+through the real graph — real retrieval, real model, real tools — and an LLM
+judge grades each answer against a written reference. The most recent run scored
+13/20 at roughly 8 seconds per question.
+
+The number is deliberately honest about what it cannot yet claim. The agent
+samples at `temperature=0.7`, so the same question takes a different path on
+every run: two runs 22 minutes apart differed by 30k input tokens, and one
+question flipped from correct to incorrect because the agent retrieved different
+chunks — nothing in the code had changed. With a single attempt per question, a
+score movement can be a real regression or just the dice.
+
+The harness, the judge's rubric and the open limitations are documented in
+[`evals/README.md`](evals/README.md). Retrieval is still only observed through
+the final answer; Precision@K, Recall@K and MRR against the `search` tool alone
+are the next step.
 
 
 ## Architecture
@@ -71,7 +88,7 @@ flowchart LR
     N8N --> CHAT["POST /chat"]
 
     subgraph Agent["LangGraph"]
-        NODE["agent_node<br/>(Claude)"]
+        NODE["agent_node<br/>(LLM, hot-swappable)"]
         TOOLS["tools:<br/>read · list_files · write · search"]
         NODE <--> TOOLS
     end
@@ -97,7 +114,8 @@ flowchart LR
 ├── prompts.py      # the agent's system prompt
 ├── avisa.py        # delivers the response back to WhatsApp
 ├── state.py         # the graph's state schema
-└── tests/           # pytest, including one real integration test
+├── tests/           # pytest, including one real integration test
+└── evals/           # golden-set evaluation harness (see evals/README.md)
 ```
 
 ## Engineering Decisions
@@ -127,7 +145,7 @@ A few choices that weren't obvious, and why I made them:
 | Language | Python 3.13 |
 | Web framework | FastAPI |
 | Agent framework | LangGraph (`StateGraph`, custom-built) |
-| LLM | Claude (Anthropic) via `langchain-anthropic` |
+| LLM | Read from Postgres at runtime (`provider:model`), currently Gemini Flash Lite |
 | Embeddings | OpenAI `text-embedding-3-small` |
 | Reranking | Cohere `rerank-v3.5` |
 | Storage | PostgreSQL + `pgvector` |
@@ -163,6 +181,7 @@ Set these in a `.env` file:
 ```bash
 uvicorn api:app --reload    # start the API
 pytest tests/ -v             # run the test suite
+python -m evals.run_evals    # run the golden-set evaluation
 ```
 
 `POST /chat` expects `{"message": "...", "reply_to": "<whatsapp thread id>"}`. `GET /health` is a plain liveness check.
@@ -189,8 +208,11 @@ A few things that only clicked once I'd actually built them, not while reading a
 
 ## Next Steps
 
-- **Evaluate retrieval quality properly.**
-  Build a benchmark dataset and track Precision@K, Recall@K and MRR to measure retrieval performance objectively.
+- **Measure retrieval on its own.**
+  The golden-set evaluation grades the final answer, which mixes retrieval quality with generation quality. Precision@K, Recall@K and MRR against the `search` tool would separate the two.
+
+- **Make eval runs comparable.**
+  Pin `temperature=0` for evaluation, or average several attempts per question, so a score change reflects a code change rather than sampling noise.
 
 - **Turn the agent from a knowledge assistant into an action agent.**
   Extend the toolset with web search, code execution, external APIs and automation capabilities so it can not only retrieve information, but also perform useful tasks on the user's behalf.

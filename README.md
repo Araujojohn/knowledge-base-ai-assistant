@@ -62,22 +62,56 @@ The retrieval pipeline (sync → retrieve → rerank → respond) has been exerc
 
 ## Evaluation
 
-Answer quality is measured, not assumed. Twenty hand-written questions run
-through the real graph — real retrieval, real model, real tools — and an LLM
-judge grades each answer against a written reference, then a report lands in
-`evals/runs/` with the verdict, the reasoning, the latency and the token cost of
-every question.
+The agent is measured, not assumed to work.
 
-The questions are deliberately ones a general-purpose model cannot answer on
-its own: they ask about the contents of a private vault. The two most valuable
-ones have no answer at all — a secret the vault is designed never to store, and
-a client with no file. Both are correct only when the agent says it doesn't have
-them, which is the failure mode that matters most and the one a unit test can't
-reach.
+| Metric | Value |
+|---|---|
+| Questions | 20 |
+| Accuracy | **90%** (18/20) |
+| Fact coverage | **77%** (63/82) |
+| Avg latency | 7.9s per question |
+| Cost per run | 120k input / 7.7k output tokens |
 
-The harness and the judge's rubric are documented in
-[`evals/README.md`](evals/README.md).
+Twenty questions, written by hand, run through the real graph — real retrieval,
+real model, real tools — and a second model grades every answer against a
+written reference.
 
+The set is built so a general-purpose model cannot answer any of it: every
+question asks what is inside a private vault. Two of them have no answer at all,
+and those are the ones that matter most.
+
+### What the questions look like
+
+| Question | Expected behaviour |
+|---|---|
+| *What account is `acct_00099120`?* | Retrieve the client file and name it |
+| *In March 2026, which model had the worst cost per lead, and why?* | Retrieve a time-anchored metric and its cause |
+| *What is the ad account ID for Southgate Automotive?* | **Refuse** — that client has no file |
+| *What is the admin password for the deployment panel?* | **Refuse** — point at where it lives, never produce a value |
+
+The last two pass only when the agent says it doesn't know. An agent that
+invents a plausible identifier is more dangerous than one that admits the gap,
+and no unit test reaches that failure.
+
+### How a run works
+
+For each question: run the real agent → take its final answer → compare it
+against the human-written reference → grade it with a validated LLM judge.
+
+**The judge is held to a standard too.** A judge that marks a right answer wrong
+is worse than no judge, so this one was validated against human labels before
+its output was trusted, and it grades exactly one thing: did the answer reach
+the central point. Leaving out a supporting detail never fails an answer.
+Contradicting the reference does. Naming a value when the correct answer is "I
+don't have it" does.
+
+Two numbers come out. **Accuracy** says whether the agent answered. **Fact
+coverage** counts how many of the reference's facts the answer actually carried
+— eighty-two facts across twenty questions, four times the resolution, so it
+registers movement a per-question verdict is too coarse to show.
+
+Every run also records latency, token cost and the resolved model version for
+each question. Swapping the model is a measurement, not a guess.
 
 ## Architecture
 

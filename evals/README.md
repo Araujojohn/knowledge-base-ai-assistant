@@ -2,10 +2,10 @@
 
 Does the agent actually answer correctly?
 
-This harness takes questions you wrote by hand, sends each one through the
-**real** agent — real retrieval, real model, real tools, the same settings
-production uses — and has a second model grade every answer against the answer
-you expected.
+Write the questions. Write what a right answer has to say. The harness runs each
+one through the **real** agent — real retrieval, real model, real tools, the
+same settings production uses — and a second model grades every answer against
+what you wrote.
 
 ## Quick start
 
@@ -75,18 +75,29 @@ Top level:
 |---|---|
 | `score` | percentage of questions judged correct |
 | `total_questions` / `correct_aswers` | the raw counts behind the score |
+| `fact_coverage` | percentage of the facts in your references that the answers actually carried |
+| `total_facts_extracted` / `total_facts_covered` | the raw counts behind that |
 | `model` | the agent model versions that actually answered |
 | `total_latency` / `avg_latency_per_question` | how long it took |
 | `total_input_tokens` / `total_output_tokens` | what it cost |
 | `breakdown_per_question` | one entry per question |
 
 Each entry in the breakdown carries the question and your expected answer, the
-answer the agent produced, `correct` (the verdict), `eval` (why the judge
-decided that), plus the model, tokens and latency for that question.
+answer the agent produced, `correct` (the verdict), `facts_extracted` and
+`facts_covered` for that question, `eval` (why the judge decided what it did),
+plus the model, tokens and latency.
 
-Start from the failures and read `eval` first. It tells you whether the agent
-missed a fact, contradicted one, or answered a different question — three
-problems with three different fixes.
+Start from the failures and read `eval` first. It names the central point the
+judge identified, so you can see whether it read the question the way you meant
+it before you go blaming the agent.
+
+**Two numbers, two jobs.** `score` answers "did the agent answer correctly" and
+is the one to quote. `fact_coverage` answers "how much of what I wrote down did
+it actually carry", and it moves in smaller steps because it counts facts rather
+than questions — twenty questions holding eighty facts give it four times the
+resolution. Use it to notice changes the verdict is too coarse to show. A
+question can be correct at 1 of 5 facts: the answer reached the point and left
+most of the detail behind.
 
 ## How it works
 
@@ -103,23 +114,34 @@ The results are aggregated and written to `evals/runs/`.
 
 ## The judge
 
-The judge reads the question, your expected answer and the agent's answer, then
-returns a verdict plus its reasoning. Its rubric is `judger_prompt` in
-`run_evals.py` — edit it there if your definition of "correct" differs.
+The judge grades one thing: **did the answer reach the central point of your
+reference.** Not whether it matched it line by line.
 
-The rule that matters most is already in it: **extra detail is not an error**
-unless it contradicts the expected answer. Without that rule the judge invents
-its own standard. An early run failed three answers that were substantially
-right, purely for saying more than the reference said.
+That distinction is the whole game. Give a judge a paragraph and ask "is this
+right", and it quietly turns your paragraph into a checklist — then fails
+answers that were correct but shorter than what you wrote. So the rubric says it
+outright: missing a supporting detail never fails an answer, and neither does
+saying more than the reference says. Contradicting the reference does.
 
-The judge model is `judger_model`, at the top of the same file, and it is
-recorded in the report — a score depends on who graded it as much as on who
-answered.
+It also has to name the central point it identified before it gives a verdict.
+When a verdict looks wrong, you can see whether the judge misread the question
+before you go blaming the agent.
 
-One thing to keep in mind while reading a verdict: the judge only ever sees your
-expected answer, so it cannot tell "extra and correct" from "extra and
-invented". If that distinction matters for your set, list the required facts per
-question instead of writing a prose reference.
+**Check the judge before you trust it.** Label a run yourself — twenty answers,
+twenty minutes — and compare. If it disagrees with you often, the score is
+measuring the judge, not the agent, and no amount of tuning the agent will move
+it. The rubric lives in `judger_prompt` and the model in `judger_model`, both at
+the top of `run_evals.py`, and the model goes into every report: a score depends
+on who graded it as much as on who answered.
+
+In the same pass the judge counts how many facts your reference states and how
+many the answer carried. Those counters are deliberately walled off from the
+verdict, and the prompt says so in as many words. Let them start driving it and
+you are back to failing right answers for being brief.
+
+One limit worth knowing: the judge only ever sees your reference, so it cannot
+tell "extra and true" from "extra and invented". If that distinction matters for
+your set, list the required facts per question instead of writing prose.
 
 ## Your data stays yours
 

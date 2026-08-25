@@ -1,6 +1,7 @@
 # Second Brain AI Agent
 
-A production AI agent with long-term memory, hybrid retrieval, and realtime voice and text access to a GitHub-backed knowledge base.
+A personal AI agent that remembers, retrieves, and updates information across a GitHub-backed knowledge base through realtime voice and text conversations.
+
 ---
 
 ## TL;DR

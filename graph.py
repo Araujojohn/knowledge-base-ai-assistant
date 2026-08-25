@@ -13,8 +13,6 @@ from tools import tools
 from langchain_core.callbacks import BaseCallbackHandler
 
 load_dotenv()
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 def check_tool_call(state: AgentState):

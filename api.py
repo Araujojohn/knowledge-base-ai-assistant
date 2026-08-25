@@ -55,13 +55,14 @@ def verify_page_auth(credentials: HTTPBasicCredentials = Depends(security)):
         )
 
 
-def verify_whatsapp_chat_token(x_n8n_secret: str = Header()):
+def verify_whatsapp_chat_token(x_chat_secret: str = Header()):
     """
-    Security | Checks the request in "/chat" for the X-N8N-Secret header
-    to match against the backend .env key, so only the n8n workflow can call it.
+    Security | Checks the request to "/chat" for the X-Chat-Secret header and
+    matches it against CHAT_API_SECRET, so only the caller holding that secret
+    can reach the agent. Nothing here is specific to whatever sends the message.
     """
 
-    if x_n8n_secret != os.getenv("N8N_CHAT_SECRET"):
+    if x_chat_secret != os.getenv("CHAT_API_SECRET"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 

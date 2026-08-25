@@ -283,7 +283,7 @@ Set these in a `.env` file:
 | `COHERE_API_KEY` | reranking |
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_PORT` | Postgres |
 | `AVISA_API_TOKEN` | sending the reply back to WhatsApp |
-| `N8N_CHAT_SECRET` | the shared secret `/chat` requires in `X-N8N-Secret` |
+| `CHAT_API_SECRET` | the shared secret `/chat` requires in the `X-Chat-Secret` header |
 | `FRONTEND_PASSWORD` | the Basic Auth password guarding the voice widget |
 | `TESTS_DB_NAME`, `TESTS_DB_USER`, `TESTS_DB_PASSWORD` | the throwaway database the integration test resets |
 
@@ -303,7 +303,7 @@ python -m evals.run_evals    # run the golden-set evaluation
 | Route | Auth | Purpose |
 |---|---|---|
 | `GET /health` | none | liveness |
-| `POST /chat` | `X-N8N-Secret` | the WhatsApp entry point — `{"message": "...", "reply_to": "<thread id>"}` |
+| `POST /chat` | `X-Chat-Secret` | the WhatsApp entry point — `{"message": "...", "reply_to": "<thread id>"}` |
 | `POST /ragsync` | HMAC signature | GitHub push webhook; re-indexes what changed |
 | `GET /mnemosyne` | Basic Auth | the voice widget |
 | `GET /mnemosyne/app.js` | Basic Auth | its browser code |

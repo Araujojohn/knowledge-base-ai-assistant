@@ -275,13 +275,22 @@ Set these in a `.env` file:
 
 | Variable | What it's for |
 |---|---|
-| `ANTHROPIC_API_KEY` | the agent's LLM |
-| `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` | reading/writing the vault |
+| `GOOGLE_API_KEY` | the agent's LLM (the model itself is chosen in Postgres, see below) |
+| `ANTHROPIC_API_KEY` | only if you point the model config at an Anthropic model |
+| `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` | reading and writing the vault |
 | `GITHUB_WEBHOOK_SECRET` | verifying the `/ragsync` webhook signature |
-| `OPENAI_API_TOKEN` | embeddings |
+| `OPENAI_API_TOKEN` | embeddings, the voice session, and the evaluation judge |
 | `COHERE_API_KEY` | reranking |
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_PORT` | Postgres |
 | `AVISA_API_TOKEN` | sending the reply back to WhatsApp |
+| `N8N_CHAT_SECRET` | the shared secret `/chat` requires in `X-N8N-Secret` |
+| `FRONTEND_PASSWORD` | the Basic Auth password guarding the voice widget |
+| `TESTS_DB_NAME`, `TESTS_DB_USER`, `TESTS_DB_PASSWORD` | the throwaway database the integration test resets |
+
+Which model the agent runs is not an environment variable — it is a row in
+Postgres, `knowledge_base_ai.agent_config`, keyed `llm_model` and holding a
+`provider:model` string such as `google_genai:gemini-flash-lite-latest`.
+Changing it takes effect within five minutes, without a deploy.
 
 ```bash
 uvicorn api:app --reload    # start the API
@@ -289,7 +298,19 @@ pytest tests/ -v             # run the test suite
 python -m evals.run_evals    # run the golden-set evaluation
 ```
 
-`POST /chat` expects `{"message": "...", "reply_to": "<whatsapp thread id>"}`. `GET /health` is a plain liveness check.
+## Endpoints
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /health` | none | liveness |
+| `POST /chat` | `X-N8N-Secret` | the WhatsApp entry point — `{"message": "...", "reply_to": "<thread id>"}` |
+| `POST /ragsync` | HMAC signature | GitHub push webhook; re-indexes what changed |
+| `GET /mnemosyne` | Basic Auth | the voice widget |
+| `GET /mnemosyne/app.js` | Basic Auth | its browser code |
+| `POST /realtime/new_session` | Basic Auth | mints an ephemeral OpenAI Realtime token |
+| `POST /realtime/query` | Basic Auth | runs the agent for the voice layer and streams the answer back |
+
+Every route is rate limited per client IP.
 
 ## Learnings
 

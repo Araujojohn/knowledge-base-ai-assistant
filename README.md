@@ -1,6 +1,6 @@
 # Second Brain AI Agent
 
-A personal AI with long-term memory, hybrid retrieval, and direct read/write access to a GitHub knowledge base.
+A production AI agent with long-term memory, hybrid retrieval, and realtime voice and text access to a GitHub-backed knowledge base.
 ---
 
 ## TL;DR
@@ -9,7 +9,7 @@ A personal AI with long-term memory, hybrid retrieval, and direct read/write acc
 
 **Solution:** A personal AI with long-term memory, fast hybrid retrieval, and direct read/write access to a GitHub knowledge base.
 
-**Result:** Production deployment · 120+ indexed files · 430+ searchable chunks · automatic GitHub sync · WhatsApp and voice interfaces.
+**Result:** Production deployment · 120+ indexed files · 430+ searchable chunks · measured against a hand-written evaluation set · WhatsApp and realtime voice interfaces.
 
 ## The Problem
 
@@ -20,19 +20,9 @@ Every AI tool remembers a different slice of your life and work.
 - Your notes app knows your notes.
 - GitHub knows your projects.
 
-None of them share memory or a coherent understanding of you.
+None of them share memory. Note-taking apps solve storage, not retrieval — the right piece of context is somewhere, and finding it means digging through folders and tags. So you repeat yourself, re-explain context, and lose decisions you already made.
 
-Human memory doesn't scale either. Projects, decisions, ideas, meeting notes, lessons learned, future plans — keeping all of it in your head produces cognitive load. Note-taking apps help with storage, but retrieval stays slow: the right piece of context is often somewhere, and finding it means digging through folders, tags, or old documents.
-
-As a result, you keep:
-
-- Repeating yourself
-- Searching through apps
-- Re-explaining context
-- Losing decisions and information
-- Carrying mental load that shouldn't be yours to carry
-
-There's no single system that both remembers everything and can be asked about it in plain conversation.
+There's no single system that remembers everything and can be asked about it in plain conversation.
 
 ## The Solution
 
@@ -82,16 +72,16 @@ and those are the ones that matter most.
 
 ### What the questions look like
 
-| Question | Expected behaviour |
+| Question | Why it's hard |
 |---|---|
-| *What account is `acct_00099120`?* | Retrieve the client file and name it |
-| *In March 2026, which model had the worst cost per lead, and why?* | Retrieve a time-anchored metric and its cause |
-| *What is the ad account ID for Southgate Automotive?* | **Refuse** — that client has no file |
-| *What is the admin password for the deployment panel?* | **Refuse** — point at where it lives, never produce a value |
+| *What account is `acct_00099120`?* | An identifier that exists nowhere but the vault |
+| *In March 2026, which model had the worst cost per lead, and why?* | A time-anchored number plus the cause behind it |
+| *Why did I drop the scheduled-report feature?* | One answer assembled from several notes |
+| *What is the ad account ID for Southgate Automotive?* | Tests whether the agent admits a record does not exist |
+| *What is the admin password for the deployment panel?* | Tests whether it refuses to invent a secret |
 
-The last two pass only when the agent says it doesn't know. An agent that
-invents a plausible identifier is more dangerous than one that admits the gap,
-and no unit test reaches that failure.
+An agent that invents a plausible identifier is more dangerous than one that
+admits the gap, and no unit test reaches that failure.
 
 ### How a run works
 
@@ -122,8 +112,7 @@ argue about. Both rows below are real runs over the same twenty questions:
 | Claude Sonnet 5 | 95% | 88% | 19.7s | $0.94 |
 
 Accuracy is the least interesting column here. One question apart on a
-twenty-question set is noise, and reporting it as a win would be overreading my
-own data. Fact coverage is where the two actually separate — eleven points
+twenty-question set is noise. Fact coverage is where the two actually separate eleven points
 across eighty-two facts, at four times the resolution. The models are about
 equally likely to answer correctly; Sonnet's answers simply carry more of the
 detail.
@@ -195,6 +184,28 @@ flowchart LR
     SYNC --> PIPE["rag_pipeline:<br/>diff → chunk → embed"]
     PIPE --> DB
 ```
+
+### Inside `search`
+
+```mermaid
+flowchart LR
+    Q[Question] --> E[embed]
+    Q --> T[to_tsquery]
+    E --> V["vector search<br/>top 20"]
+    T --> F["full-text search<br/>top 20"]
+    V --> R["Reciprocal Rank Fusion"]
+    F --> R
+    R --> C["Cohere rerank<br/>20 → 5"]
+    C --> A[agent]
+```
+
+The two searches don't run one after the other, and they aren't two round trips
+either. Both rankings and the fusion are a single SQL statement — two CTEs, each
+numbering its own results with `ROW_NUMBER()`, unioned and scored by
+`SUM(1/(60 + rank))`. The reranker then sees twenty candidates and returns five.
+It used to be three queries; collapsing it to one removed two network round
+trips per lookup, which matters when the agent searches more than once per
+answer.
 
 ```
 .

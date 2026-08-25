@@ -64,8 +64,9 @@ The retrieval pipeline (sync → retrieve → rerank → respond) has been exerc
 
 Answer quality is measured, not assumed. Twenty hand-written questions run
 through the real graph — real retrieval, real model, real tools — and an LLM
-judge grades each answer against a written reference. The most recent run scored
-11/20 at roughly 8 seconds per question.
+judge grades each answer against a written reference, then a report lands in
+`evals/runs/` with the verdict, the reasoning, the latency and the token cost of
+every question.
 
 The questions are deliberately ones a general-purpose model cannot answer on
 its own: they ask about the contents of a private vault. The two most valuable

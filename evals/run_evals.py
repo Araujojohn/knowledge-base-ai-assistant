@@ -44,15 +44,30 @@ Never fail an answer for:
 
 One exception that overrides everything above: when the reference says the
 information does not exist or is not available, declining IS the central point.
-If the answer supplies a value anyway — even next to a disclaimer — that is
-false.
+The answer is false if it supplies any value of the kind that was asked for —
+including a value belonging to a different entity, or one offered as a near
+match or a related record. Listing neighbouring records counts as supplying a
+value. Saying "there is no record" and then naming candidates anyway is false.
 
 In `reason`, state what you took the central point to be, then whether the
 answer carried it.
+
+Separately from the verdict, count facts. Break the reference into the
+individual pieces of information it states — a name, a number, a date, an
+identifier, a cause, a decision — and report:
+
+facts_extracted: how many facts the reference states.
+facts_covered:   how many of those appear in the agent's answer.
+
+These counters do NOT affect `correct`. An answer that reaches the central point
+is correct even when facts_covered is far below facts_extracted. Material the
+answer adds beyond the reference is never counted.
 """
 
 class Judge_Response_Schema(BaseModel):
     correct: bool
+    facts_extracted: int
+    facts_covered: int
     reason: str
 
 
@@ -102,6 +117,8 @@ async def run_golden_set(golden_set, output_path):
     total_input_tokens = 0
     total_output_tokens = 0
     total_latency = 0
+    total_facts_extracted = 0
+    total_facts_covered = 0
     for index, question in enumerate(questions_list):
         questions += 1
         cronometer_start = time.perf_counter()
@@ -121,11 +138,17 @@ async def run_golden_set(golden_set, output_path):
         try:
             eval = run_judge(question["question"], answer, question["expected_answer"])
             questions_list[index]["correct"] = eval.correct
+            questions_list[index]["facts_extracted"] = eval.facts_extracted
+            questions_list[index]["facts_covered"] = eval.facts_covered
             questions_list[index]["eval"] = eval.reason
+            total_facts_extracted += eval.facts_extracted
+            total_facts_covered += eval.facts_covered
             if eval.correct == True:
                 correct_answers += 1
         except Exception as error:
             questions_list[index]["correct"] = False
+            questions_list[index]["facts_extracted"] = 0
+            questions_list[index]["facts_covered"] = 0
             questions_list[index]["eval"] = f"llm judge error {error}" 
 
     models = sorted({q["model"] for q in questions_list})
@@ -136,6 +159,13 @@ async def run_golden_set(golden_set, output_path):
         "score": score,
         "total_questions": questions,
         "correct_aswers": correct_answers,
+        "fact_coverage": (
+            round(100 * total_facts_covered / total_facts_extracted, 1)
+            if total_facts_extracted
+            else 0
+        ),
+        "total_facts_extracted": total_facts_extracted,
+        "total_facts_covered": total_facts_covered,
         "total_latency": total_latency,
         "avg_latency_per_question": average_latency_per_question,
         "total_input_tokens": total_input_tokens,

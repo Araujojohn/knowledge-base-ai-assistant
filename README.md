@@ -138,10 +138,10 @@ the OpenAI Realtime API — microphone in, speech out, interruption handled
 natively — and it talks to the same LangGraph agent that answers on WhatsApp.
 
 <p align="center">
-  <img src="docs/voice-widget.png" width="860" alt="The browser voice widget before a session starts: transcript view, session rail with live counters, and the connect and mute dock">
+  <img src="docs/voice-widget.png" width="860" alt="A live voice session in the browser widget: spoken turns in blue, and the knowledge-base lookup that answered them logged as its own entry">
 </p>
 
-<p align="center"><sub>The widget before connecting. Spoken turns land in the transcript; every knowledge-base lookup gets its own entry beside them.</sub></p>
+<p align="center"><sub>A live session. Blue is what was said out loud; the entry between them is the vault lookup that answered it — a receipt, kept separate from her voice.</sub></p>
 
 **The voice model is a peripheral, not the brain.** It does audio: speech to
 text, text to speech, turn detection, barge-in. When it needs to know something

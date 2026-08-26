@@ -112,7 +112,9 @@
     background:
       radial-gradient(ellipse 65% 55% at 60% 15%, rgba(100, 160, 255, 0.13) 0%, transparent 70%),
       radial-gradient(ellipse 55% 50% at 80% 75%, rgba(59, 130, 246, 0.1) 0%, transparent 65%),
-      radial-gradient(ellipse 45% 40% at 55% 45%, rgba(180, 215, 255, 0.06) 0%, transparent 50%);
+      radial-gradient(ellipse 45% 40% at 55% 45%, rgba(180, 215, 255, 0.06) 0%, transparent 50%),
+      /* horizon: the sky meets the dock, so the controls rest on light */
+      radial-gradient(ellipse 78% 30% at 50% 106%, rgba(79, 142, 247, 0.12) 0%, transparent 62%);
   }
 
   .light-beam {
@@ -150,7 +152,7 @@
   }
   .aurora-3 {
     width: 45vw; height: 40vh; top: 20%; left: 35%;
-    background: radial-gradient(ellipse, rgba(180, 215, 255, 0.06) 0%, transparent 50%);
+    background: radial-gradient(ellipse, rgba(180, 215, 255, 0.10) 0%, transparent 52%);
     animation: aurora3 55s ease-in-out infinite alternate;
   }
   @keyframes aurora1 {
@@ -181,7 +183,11 @@
   @media (prefers-reduced-motion: reduce) {
     .aurora-layer, .light-beam,
     .neural-core, .neural-ring, .neural-ring-2, .neural-dot, .neural-wave,
-    .pulse, .recall[data-state="running"]::before, .step.running .step-dot { animation: none !important; }
+    .pulse, .recall[data-state="running"]::before, .step.running .step-dot,
+    .empty-glyph .core { animation: none !important; }
+    .empty-glyph .ring   { animation: none !important; opacity: .30; transform: scale(.60); }
+    .empty-glyph .ring-2 { opacity: .16; transform: scale(.80); }
+    .empty-glyph .ring-3 { opacity: .08; transform: scale(1); }
   }
   body.bg-anim-paused .aurora-layer,
   body.bg-anim-paused .light-beam,
@@ -191,7 +197,9 @@
   body.bg-anim-paused .neural-dot,
   body.bg-anim-paused .neural-wave,
   body.bg-anim-paused .pulse,
-  body.bg-anim-paused #mic-btn.listening { animation-play-state: paused !important; }
+  body.bg-anim-paused #mic-btn.listening,
+  body.bg-anim-paused .empty-glyph .ring,
+  body.bg-anim-paused .empty-glyph .core { animation-play-state: paused !important; }
 
   /* ══════════════════════════════════════════════════════════════
      SHELL — rail + stage. Fixed viewport height, internal scroll.
@@ -457,6 +465,10 @@
     flex-direction: column;
     gap: 14px;
   }
+  .transcript-inner:has(> .empty) {
+    margin: auto;             /* nothing to stack yet — the invitation sits
+                                 in the middle of the sky, not on the floor */
+  }
 
   .empty {
     margin: auto 0;
@@ -464,20 +476,53 @@
     text-align: center;
     color: var(--text-dim);
   }
+  /* The idle screen is the product's first impression, and what this
+     product does is listen. So the empty state is not a "no data" icon:
+     it is an aperture with rings leaving it, the same signal blue the
+     live orb uses in the dock. Same instrument, at rest. */
   .empty-glyph {
-    width: 46px; height: 46px;
-    margin: 0 auto 16px;
-    border-radius: 50%;
-    border: 1px dashed rgba(79, 142, 247, 0.3);
+    position: relative;
+    width: 124px; height: 124px;
+    margin: 0 auto 6px;
     display: grid;
     place-items: center;
   }
-  .empty-glyph::after {
+  .empty-glyph::before {                 /* the aperture — structure that
+                                            holds even between pulses */
     content: "";
-    width: 11px; height: 11px;
+    position: absolute;
+    width: 62px; height: 62px;
     border-radius: 50%;
-    background: radial-gradient(circle, var(--accent-hover) 0%, var(--accent) 60%, transparent 100%);
-    box-shadow: 0 0 12px var(--accent-glow);
+    border: 1px dashed rgba(79, 142, 247, 0.34);
+    box-shadow: 0 0 0 1px rgba(79, 142, 247, 0.05), inset 0 0 26px rgba(79, 142, 247, 0.06);
+  }
+  .empty-glyph .ring {
+    position: absolute;
+    width: 124px; height: 124px;
+    border-radius: 50%;
+    border: 1px solid rgba(79, 142, 247, 0.34);
+    opacity: 0;
+    transform: scale(.30);
+    animation: listenOut 6.6s ease-out infinite;
+    will-change: transform, opacity;
+  }
+  .empty-glyph .ring-2 { animation-delay: 2.2s; }
+  .empty-glyph .ring-3 { animation-delay: 4.4s; }
+  @keyframes listenOut {
+    0%   { transform: scale(.30); opacity: 0; }
+    14%  { opacity: .5; }
+    100% { transform: scale(1);   opacity: 0; }
+  }
+  .empty-glyph .core {
+    position: relative;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, var(--accent-hover) 0%, var(--accent) 58%, rgba(37, 99, 235, 0.3) 100%);
+    animation: coreBreathe 3.8s ease-in-out infinite;
+  }
+  @keyframes coreBreathe {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 16px var(--accent-glow), 0 0 40px rgba(79, 142, 247, 0.16); }
+    50%      { transform: scale(1.16); box-shadow: 0 0 24px var(--accent-glow), 0 0 58px rgba(79, 142, 247, 0.28); }
   }
   .empty h2 {
     font-family: var(--font-display);
@@ -487,6 +532,52 @@
     margin: 0 0 6px;
   }
   .empty p { margin: 0 auto; max-width: 380px; font-size: 12.5px; line-height: 1.6; }
+
+  .empty .empty-seeds-label {
+    max-width: 412px;
+    margin: 18px auto 9px;
+    padding-left: 2px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .empty-seeds {
+    list-style: none;
+    margin: 0 auto;
+    padding: 0;
+    max-width: 412px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+  }
+  .empty-seeds li {
+    display: flex;
+    align-items: baseline;
+    gap: 11px;
+    padding: 9px 13px;
+    border: 1px solid var(--edge-soft);
+    border-radius: var(--r-md);
+    background: var(--sky-inset);   /* inset: it receives what you say */
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .empty-seeds b {                  /* which capability the line exercises */
+    flex: none;
+    width: 40px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--signal);
+  }
+  .empty-seeds li:last-child b { color: var(--recall); }
 
   .msg, .recall, .line-system, .line-error { overflow-wrap: break-word; word-break: break-word; }
 
@@ -699,6 +790,10 @@
   .panel h2 + p { margin-top: -6px; }
   .panel p { font-size: 13px; line-height: 1.65; color: var(--text-dim); margin: 0 0 14px; }
   .panel section + section { margin-top: 26px; }
+
+  .card-pad { padding: 16px 18px; }
+  .card-pad > :last-child { margin-bottom: 0; }
+  .card-pad .steps-list li:last-child { padding-bottom: 0; }
 
   .card {
     border: 1px solid var(--edge);
@@ -1143,9 +1238,20 @@
           <div class="transcript" id="transcript">
             <div class="transcript-inner" id="transcript-inner">
               <div class="empty" id="empty-state">
-                <div class="empty-glyph" aria-hidden="true"></div>
+                <div class="empty-glyph" aria-hidden="true">
+                  <span class="ring ring-1"></span>
+                  <span class="ring ring-2"></span>
+                  <span class="ring ring-3"></span>
+                  <span class="core"></span>
+                </div>
                 <h2>Nothing heard yet</h2>
                 <p>Connect and start talking. Your turns and hers land here as they happen — a lookup into the knowledge base gets its own entry, separate from what she says out loud.</p>
+                <p class="empty-seeds-label">Try saying</p>
+                <ul class="empty-seeds">
+                  <li><b>Recall</b>What did I decide about the Salvador trip?</li>
+                  <li><b>Find</b>Which VPS is production running on?</li>
+                  <li><b>Write</b>Note down that the checkpoint is done.</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -1186,7 +1292,7 @@
 
               <section>
                 <h2>Reading the transcript</h2>
-                <div class="legend">
+                <div class="legend card card-pad">
                   <div class="legend-row">
                     <span class="legend-swatch" style="background: var(--accent);"></span>
                     <span><b>Blue — spoken</b>What you said and what Mnemosyne said back. Her bubbles are the words actually coming out of the speaker.</span>
@@ -1207,17 +1313,21 @@
             <div class="panel-inner">
               <section>
                 <h2>What happens when you talk</h2>
+                <div class="card card-pad">
                 <ol class="steps-list">
                   <li><strong>Your voice goes straight to OpenAI.</strong> The browser opens a WebRTC connection to the Realtime API using a short-lived key this server hands out. Audio never round-trips through the backend.</li>
                   <li><strong>Mnemosyne answers on her own</strong> for anything she already knows — that's the voice you hear, and the blue bubbles in the transcript.</li>
                   <li><strong>For anything personal she calls the knowledge base.</strong> That fires a request back to this server, which runs the LangGraph agent over the vault: hybrid search (embeddings + full-text, fused and reranked), plus read and write tools against GitHub.</li>
                   <li><strong>The result is handed back to her</strong>, and she says it in her own words. The raw text the agent returned stays in the purple recall entry — it is a receipt, not something she said.</li>
                 </ol>
+                </div>
               </section>
 
               <section>
                 <h2>Notes</h2>
+                <div class="card card-pad">
                 <p>She speaks English and Portuguese and follows whichever you use. Memory lasts as long as this session — a new connection starts a new thread. Writes to the vault land as real commits, so anything she saves is revertible.</p>
+                </div>
               </section>
             </div>
           </div>

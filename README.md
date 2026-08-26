@@ -49,7 +49,9 @@ Current state:
 
 The retrieval pipeline (sync → retrieve → rerank → respond) has been exercised end-to-end, including an integration test that inserts a file containing a unique secret phrase and verifies that hybrid retrieval successfully finds the correct chunk using real PostgreSQL, embedding, and reranking services.
 
-![A real WhatsApp exchange: asking the agent for a trip summary and getting decisions pulled straight from the vault](docs/whatsapp-example.jpeg)
+<p align="center">
+  <img src="docs/whatsapp-example.jpeg" width="300" alt="A real WhatsApp exchange: asking the agent for a trip summary and getting decisions pulled straight from the vault">
+</p>
 
 ## Evaluation
 
@@ -134,6 +136,12 @@ of paying more would have fixed it. Finding that is what the harness is for.
 The agent also answers out loud. A browser widget opens a WebRTC connection to
 the OpenAI Realtime API — microphone in, speech out, interruption handled
 natively — and it talks to the same LangGraph agent that answers on WhatsApp.
+
+<p align="center">
+  <img src="docs/voice-widget.png" width="860" alt="The browser voice widget before a session starts: transcript view, session rail with live counters, and the connect and mute dock">
+</p>
+
+<p align="center"><sub>The widget before connecting. Spoken turns land in the transcript; every knowledge-base lookup gets its own entry beside them.</sub></p>
 
 **The voice model is a peripheral, not the brain.** It does audio: speech to
 text, text to speech, turn detection, barge-in. When it needs to know something

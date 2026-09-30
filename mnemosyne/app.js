@@ -82,6 +82,26 @@ const pendingUserBubbles = [];
 // response_id, so this one's safe to key by id rather than a queue.
 const responseBubbles = new Map();
 
+// The Realtime API allows one active response per conversation — a
+// response.create sent while another is still generating is rejected
+// (conversation_already_has_active_response) and nothing is spoken. That's
+// exactly what happened when a lookup finished while the "let me check..."
+// narration was still going: the result landed in context, but the request
+// to speak it was dropped. So response.create goes through requestResponse(),
+// which holds it until the active response's response.done.
+let responseActive = false;
+let responseQueued = false;
+
+function requestResponse() {
+  if (!dc || dc.readyState !== "open") return;
+  if (responseActive) {
+    responseQueued = true;
+    return;
+  }
+  responseActive = true; // claimed now, not at response.created, so a 2nd call in between also queues
+  dc.send(JSON.stringify({ type: "response.create" }));
+}
+
 // ── Icons (inline, one set, matched to the markup's stroke weight) ──────
 const ICON = {
   vault:
@@ -503,7 +523,7 @@ async function handleFunctionCall(name, callId, argsJson) {
     );
     if (!narratedOnce) {
       narratedOnce = true;
-      dc.send(JSON.stringify({ type: "response.create" }));
+      requestResponse();
     }
   };
 
@@ -534,7 +554,7 @@ async function handleFunctionCall(name, callId, argsJson) {
       },
     })
   );
-  dc.send(JSON.stringify({ type: "response.create" }));
+  requestResponse();
 }
 
 // response.output_audio_transcript.delta chunks aren't paced to match the
@@ -614,6 +634,7 @@ function handleServerEvent(raw) {
     // bubble here (before any audio/text exists yet) so it lands in the
     // right chronological slot regardless of how long generation takes.
     case "response.created":
+      responseActive = true; // also covers responses VAD starts on its own
       responseBubbles.set(event.response.id, addAssistantMessage());
       break;
 
@@ -646,6 +667,12 @@ function handleServerEvent(raw) {
         responseBubbles.delete(event.response.id);
       }
 
+      responseActive = false;
+      if (responseQueued) {
+        responseQueued = false;
+        requestResponse();
+      }
+
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
@@ -655,6 +682,12 @@ function handleServerEvent(raw) {
       break;
     }
     case "error":
+      // A VAD-started response can still slip in between our claim and the
+      // server receiving the create — retry once that response finishes.
+      if (event.error?.code === "conversation_already_has_active_response") {
+        responseQueued = true;
+        break;
+      }
       scheduleFade(addSystemLine(event.error?.message ?? "Unknown realtime error", "error"));
       break;
     default:
@@ -734,6 +767,8 @@ async function connect() {
 function cleanup() {
   connected = false;
   toolCallInFlight = false;
+  responseActive = false;
+  responseQueued = false;
   if (dc) dc.close();
   if (pc) pc.close();
   if (micStream) micStream.getTracks().forEach((t) => t.stop());

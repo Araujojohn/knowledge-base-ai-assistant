@@ -126,7 +126,14 @@ const playedOut = new Set();
 // is dropped instead of opening a fallback bubble.
 const silencedResponses = new Set();
 
+// The backend streams progress and result almost together, so the
+// narration's response.create often goes out in the same tick the result
+// lands — sent, but not yet created, so there's no id to cancel. It gets
+// cancelled the moment response.created hands us its id instead.
+let cancelNextResponse = false;
+
 function silenceFiller() {
+  if (narrationRequested && responseActive && !activeResponseId) cancelNextResponse = true;
   narrationRequested = false;
   if (!dc || dc.readyState !== "open") return;
 
@@ -660,6 +667,11 @@ function handleServerEvent(raw) {
     // distinct from response.done, which marks generation finishing, not
     // playback (the audio track can still be draining its buffer after).
     case "output_audio_buffer.started":
+      // A cancelled response can still have flushed its first audio chunk.
+      if (silencedResponses.has(event.response_id)) {
+        dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+        break;
+      }
       audioPlaying = true;
       playingResponseId = event.response_id ?? null;
       startSpeakingAnalysis();
@@ -701,6 +713,12 @@ function handleServerEvent(raw) {
     case "response.created":
       responseActive = true; // also covers responses VAD starts on its own
       activeResponseId = event.response.id;
+      if (cancelNextResponse) {
+        cancelNextResponse = false;
+        silencedResponses.add(event.response.id);
+        dc.send(JSON.stringify({ type: "response.cancel", response_id: event.response.id }));
+        break; // no bubble — she never says it
+      }
       responseBubbles.set(event.response.id, addAssistantMessage());
       if (narrationRequested) {
         narrationRequested = false;
@@ -869,6 +887,7 @@ function cleanup() {
   playingResponseId = null;
   fillerBubbles.clear();
   playedOut.clear();
+  cancelNextResponse = false;
   silencedResponses.clear();
   pendingTypedText = null;
   if (dc) dc.close();

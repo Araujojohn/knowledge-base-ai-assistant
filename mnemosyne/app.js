@@ -35,7 +35,6 @@ const aiOrb = document.getElementById("ai-orb");
 const dockHint = document.getElementById("dock-hint");
 const composer = document.getElementById("composer");
 const composerInput = document.getElementById("composer-input");
-const composerSend = document.getElementById("composer-send");
 
 const railEl = document.getElementById("rail");
 const railScrim = document.getElementById("rail-scrim");
@@ -105,38 +104,55 @@ function requestResponse() {
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
-// The "let me check..." narration is filler — once the real result lands it
-// has nothing left to say, but it kept talking (and the result reply then
-// re-narrated progress on top of it, so she said the same thing twice).
-// Track which response is the narration and which one is playing, so the
-// result can cut it off: response.cancel stops generation, and
-// output_audio_buffer.clear stops audio already generated but still playing
-// (response.done marks generation end, not playback end).
+// Filler = what she says between deciding to look something up and the
+// result arriving: the "let me check..." spoken in the same response that
+// calls the tool, plus the progress narration requested afterwards. Once
+// the result lands both are superseded, so the result cuts them off:
+// response.cancel stops generation, output_audio_buffer.clear stops audio
+// already generated but still playing (response.done marks generation end,
+// not playback end — generation finishes seconds before she stops talking,
+// which is why cancelling alone never interrupted anything).
 let narrationRequested = false;
-let narrationResponseId = null;
+let activeResponseId = null;
+let audioPlaying = false;
 let playingResponseId = null;
-// Transcript deltas run ahead of the audio, so a cut narration's bubble
-// holds words she never said. Its bubble is removed, and any delta still
-// in flight for it is dropped instead of opening a fallback bubble.
+// Bubbles are dropped from responseBubbles at response.done, long before
+// playback ends — fillers keep their own reference so they can still be
+// removed when cut.
+const fillerBubbles = new Map();
+const playedOut = new Set();
+// Transcript deltas run ahead of the audio, so a cut filler's bubble holds
+// words she never said. It's removed, and any delta still in flight for it
+// is dropped instead of opening a fallback bubble.
 const silencedResponses = new Set();
 
-function silenceNarration() {
+function silenceFiller() {
   narrationRequested = false;
-  if (!narrationResponseId || !dc || dc.readyState !== "open") return;
-  if (responseActive) {
-    dc.send(JSON.stringify({ type: "response.cancel", response_id: narrationResponseId }));
+  if (!dc || dc.readyState !== "open") return;
+
+  const activeIsFiller = responseActive && fillerBubbles.has(activeResponseId);
+  // output_audio_buffer.started carries the response_id; if it ever comes
+  // without one, anything playing during a lookup is treated as filler.
+  const fillerPlaying = audioPlaying && (!playingResponseId || fillerBubbles.has(playingResponseId));
+
+  if (activeIsFiller) {
+    dc.send(JSON.stringify({ type: "response.cancel", response_id: activeResponseId }));
   }
-  if (playingResponseId === narrationResponseId) {
+  if (fillerPlaying) {
     dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
   }
-  const bubble = responseBubbles.get(narrationResponseId);
-  if (bubble) {
-    if (bubble._twTimer) clearInterval(bubble._twTimer);
-    bubble._wrap?.remove();
-    responseBubbles.delete(narrationResponseId);
+  if (DEBUG) console.log("[silenceFiller]", { activeIsFiller, fillerPlaying, playingResponseId, fillers: [...fillerBubbles.keys()] });
+
+  if (activeIsFiller || fillerPlaying) {
+    for (const [id, bubble] of fillerBubbles) {
+      if (playedOut.has(id)) continue; // fully spoken — keep it
+      if (bubble._twTimer) clearInterval(bubble._twTimer);
+      bubble._wrap?.remove();
+      responseBubbles.delete(id);
+      silencedResponses.add(id);
+    }
   }
-  silencedResponses.add(narrationResponseId);
-  narrationResponseId = null;
+  fillerBubbles.clear();
 }
 
 // ── Icons (inline, one set, matched to the markup's stroke weight) ──────
@@ -585,7 +601,7 @@ async function handleFunctionCall(name, callId, argsJson) {
   // The result supersedes any narration still going. The cancelled
   // response still emits response.done, which releases the queued
   // response.create below — so the answer starts right after the cut.
-  silenceNarration();
+  silenceFiller();
 
   dc.send(
     JSON.stringify({
@@ -644,11 +660,15 @@ function handleServerEvent(raw) {
     // distinct from response.done, which marks generation finishing, not
     // playback (the audio track can still be draining its buffer after).
     case "output_audio_buffer.started":
+      audioPlaying = true;
       playingResponseId = event.response_id ?? null;
       startSpeakingAnalysis();
       break;
     case "output_audio_buffer.stopped":
+      if (event.response_id) playedOut.add(event.response_id);
+    // falls through
     case "output_audio_buffer.cleared": // cleared on interruption/barge-in
+      audioPlaying = false;
       playingResponseId = null;
       stopSpeakingAnalysis();
       break;
@@ -680,11 +700,12 @@ function handleServerEvent(raw) {
     // right chronological slot regardless of how long generation takes.
     case "response.created":
       responseActive = true; // also covers responses VAD starts on its own
+      activeResponseId = event.response.id;
+      responseBubbles.set(event.response.id, addAssistantMessage());
       if (narrationRequested) {
         narrationRequested = false;
-        narrationResponseId = event.response.id;
+        fillerBubbles.set(event.response.id, responseBubbles.get(event.response.id));
       }
-      responseBubbles.set(event.response.id, addAssistantMessage());
       break;
 
     // Text version of what the assistant is speaking, streamed incrementally
@@ -718,6 +739,7 @@ function handleServerEvent(raw) {
       }
 
       responseActive = false;
+      activeResponseId = null;
       if (responseQueued) {
         responseQueued = false;
         requestResponse();
@@ -726,6 +748,9 @@ function handleServerEvent(raw) {
       const output = event.response?.output ?? [];
       for (const item of output) {
         if (item.type === "function_call") {
+          // Whatever this response said aloud before calling the tool
+          // ("let me check...") is filler too.
+          if (reserved) fillerBubbles.set(event.response.id, reserved);
           handleFunctionCall(item.name, item.call_id, item.arguments);
         }
       }
@@ -738,7 +763,7 @@ function handleServerEvent(raw) {
         responseQueued = true;
         break;
       }
-      // silenceNarration() can race the narration finishing on its own —
+      // silenceFiller() can race the narration finishing on its own —
       // nothing left to cancel is fine, not an error worth showing.
       if (event.error?.code === "response_cancel_not_active") break;
       scheduleFade(addSystemLine(event.error?.message ?? "Unknown realtime error", "error"));
@@ -748,7 +773,10 @@ function handleServerEvent(raw) {
   }
 }
 
-async function connect() {
+// withMic=false is a text-only session: no microphone prompt, a receive-only
+// audio track so she still answers out loud. Started by sending a typed
+// message while disconnected; Connect always starts a voice session.
+async function connect({ withMic = true } = {}) {
   connectBtn.disabled = true;
   setStatus("Connecting…", "connecting");
   setOrbState("connecting");
@@ -764,9 +792,14 @@ async function connect() {
       setupAudioAnalyser(e.streams[0]);
     };
 
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    micStream.getTracks().forEach((track) => pc.addTrack(track, micStream));
-    metaMic.textContent = micStream.getAudioTracks()[0]?.label || "Default input";
+    if (withMic) {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStream.getTracks().forEach((track) => pc.addTrack(track, micStream));
+      metaMic.textContent = micStream.getAudioTracks()[0]?.label || "Default input";
+    } else {
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      metaMic.textContent = "Off (text only)";
+    }
 
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("message", (e) => handleServerEvent(e.data));
@@ -781,11 +814,18 @@ async function connect() {
       connectBtn.classList.remove("btn-primary");
       connectBtn.classList.add("btn-danger");
       connectBtn.disabled = false;
-      micBtn.disabled = false;
-      micBtn.classList.add("listening");
-      setComposerEnabled(true);
-      dockHint.textContent = "Listening — just talk";
-      scheduleFade(addSystemLine("Connected. Start talking."));
+      if (withMic) {
+        micBtn.disabled = false;
+        micBtn.classList.add("listening");
+        dockHint.textContent = "Listening — just talk";
+        scheduleFade(addSystemLine("Connected. Start talking."));
+      } else {
+        dockHint.textContent = "Text only — microphone off";
+      }
+      if (pendingTypedText) {
+        sendTypedMessage(pendingTypedText);
+        pendingTypedText = null;
+      }
     });
     dc.addEventListener("close", () => {
       if (connected) disconnect();
@@ -824,10 +864,13 @@ function cleanup() {
   responseActive = false;
   responseQueued = false;
   narrationRequested = false;
-  narrationResponseId = null;
+  activeResponseId = null;
+  audioPlaying = false;
   playingResponseId = null;
+  fillerBubbles.clear();
+  playedOut.clear();
   silencedResponses.clear();
-  setComposerEnabled(false);
+  pendingTypedText = null;
   if (dc) dc.close();
   if (pc) pc.close();
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
@@ -877,17 +920,11 @@ connectBtn.addEventListener("click", () => {
 // Typed turns go into the same Realtime conversation as spoken ones — a
 // user message item plus a response request — so she answers out loud,
 // with the same memory and the same tool.
-function setComposerEnabled(enabled) {
-  composerInput.disabled = !enabled;
-  composerSend.disabled = !enabled;
-  composerInput.placeholder = enabled ? "Type a message…" : "Connect to type a message";
-  if (!enabled) composerInput.value = "";
-}
+// The composer is always usable: typing while disconnected opens a
+// text-only session (no microphone) and sends the message once it's up.
+let pendingTypedText = null;
 
-composer.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const text = composerInput.value.trim();
-  if (!text || !dc || dc.readyState !== "open") return;
+function sendTypedMessage(text) {
   dc.send(
     JSON.stringify({
       type: "conversation.item.create",
@@ -897,8 +934,20 @@ composer.addEventListener("submit", (e) => {
   addUserMessage(text);
   bumpTurns();
   scrollTranscriptToBottom();
-  composerInput.value = "";
   requestResponse();
+}
+
+composer.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = composerInput.value.trim();
+  if (!text) return;
+  composerInput.value = "";
+  if (dc && dc.readyState === "open") {
+    sendTypedMessage(text);
+  } else {
+    pendingTypedText = text; // sent by the data channel's open handler
+    if (!pc) connect({ withMic: false });
+  }
 });
 
 micBtn.addEventListener("click", () => {

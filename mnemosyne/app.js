@@ -33,6 +33,9 @@ const emptyState = document.getElementById("empty-state");
 const remoteAudio = document.getElementById("remote-audio");
 const aiOrb = document.getElementById("ai-orb");
 const dockHint = document.getElementById("dock-hint");
+const composer = document.getElementById("composer");
+const composerInput = document.getElementById("composer-input");
+const composerSend = document.getElementById("composer-send");
 
 const railEl = document.getElementById("rail");
 const railScrim = document.getElementById("rail-scrim");
@@ -100,6 +103,40 @@ function requestResponse() {
   }
   responseActive = true; // claimed now, not at response.created, so a 2nd call in between also queues
   dc.send(JSON.stringify({ type: "response.create" }));
+}
+
+// The "let me check..." narration is filler — once the real result lands it
+// has nothing left to say, but it kept talking (and the result reply then
+// re-narrated progress on top of it, so she said the same thing twice).
+// Track which response is the narration and which one is playing, so the
+// result can cut it off: response.cancel stops generation, and
+// output_audio_buffer.clear stops audio already generated but still playing
+// (response.done marks generation end, not playback end).
+let narrationRequested = false;
+let narrationResponseId = null;
+let playingResponseId = null;
+// Transcript deltas run ahead of the audio, so a cut narration's bubble
+// holds words she never said. Its bubble is removed, and any delta still
+// in flight for it is dropped instead of opening a fallback bubble.
+const silencedResponses = new Set();
+
+function silenceNarration() {
+  narrationRequested = false;
+  if (!narrationResponseId || !dc || dc.readyState !== "open") return;
+  if (responseActive) {
+    dc.send(JSON.stringify({ type: "response.cancel", response_id: narrationResponseId }));
+  }
+  if (playingResponseId === narrationResponseId) {
+    dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+  }
+  const bubble = responseBubbles.get(narrationResponseId);
+  if (bubble) {
+    if (bubble._twTimer) clearInterval(bubble._twTimer);
+    bubble._wrap?.remove();
+    responseBubbles.delete(narrationResponseId);
+  }
+  silencedResponses.add(narrationResponseId);
+  narrationResponseId = null;
 }
 
 // ── Icons (inline, one set, matched to the markup's stroke weight) ──────
@@ -523,6 +560,7 @@ async function handleFunctionCall(name, callId, argsJson) {
     );
     if (!narratedOnce) {
       narratedOnce = true;
+      narrationRequested = true;
       requestResponse();
     }
   };
@@ -543,6 +581,11 @@ async function handleFunctionCall(name, callId, argsJson) {
   if (connected) setStatus("Connected", "connected");
 
   if (!dc || dc.readyState !== "open") return;
+
+  // The result supersedes any narration still going. The cancelled
+  // response still emits response.done, which releases the queued
+  // response.create below — so the answer starts right after the cut.
+  silenceNarration();
 
   dc.send(
     JSON.stringify({
@@ -601,10 +644,12 @@ function handleServerEvent(raw) {
     // distinct from response.done, which marks generation finishing, not
     // playback (the audio track can still be draining its buffer after).
     case "output_audio_buffer.started":
+      playingResponseId = event.response_id ?? null;
       startSpeakingAnalysis();
       break;
     case "output_audio_buffer.stopped":
     case "output_audio_buffer.cleared": // cleared on interruption/barge-in
+      playingResponseId = null;
       stopSpeakingAnalysis();
       break;
 
@@ -635,12 +680,17 @@ function handleServerEvent(raw) {
     // right chronological slot regardless of how long generation takes.
     case "response.created":
       responseActive = true; // also covers responses VAD starts on its own
+      if (narrationRequested) {
+        narrationRequested = false;
+        narrationResponseId = event.response.id;
+      }
       responseBubbles.set(event.response.id, addAssistantMessage());
       break;
 
     // Text version of what the assistant is speaking, streamed incrementally
     // into the bubble reserved by response.created.
     case "response.output_audio_transcript.delta": {
+      if (silencedResponses.has(event.response_id)) break;
       let bubble = responseBubbles.get(event.response_id);
       if (!bubble) {
         bubble = addAssistantMessage(); // fallback: response.created never seen
@@ -688,6 +738,9 @@ function handleServerEvent(raw) {
         responseQueued = true;
         break;
       }
+      // silenceNarration() can race the narration finishing on its own —
+      // nothing left to cancel is fine, not an error worth showing.
+      if (event.error?.code === "response_cancel_not_active") break;
       scheduleFade(addSystemLine(event.error?.message ?? "Unknown realtime error", "error"));
       break;
     default:
@@ -730,6 +783,7 @@ async function connect() {
       connectBtn.disabled = false;
       micBtn.disabled = false;
       micBtn.classList.add("listening");
+      setComposerEnabled(true);
       dockHint.textContent = "Listening — just talk";
       scheduleFade(addSystemLine("Connected. Start talking."));
     });
@@ -769,6 +823,11 @@ function cleanup() {
   toolCallInFlight = false;
   responseActive = false;
   responseQueued = false;
+  narrationRequested = false;
+  narrationResponseId = null;
+  playingResponseId = null;
+  silencedResponses.clear();
+  setComposerEnabled(false);
   if (dc) dc.close();
   if (pc) pc.close();
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
@@ -813,6 +872,33 @@ connectBtn.addEventListener("click", () => {
   } else {
     connect();
   }
+});
+
+// Typed turns go into the same Realtime conversation as spoken ones — a
+// user message item plus a response request — so she answers out loud,
+// with the same memory and the same tool.
+function setComposerEnabled(enabled) {
+  composerInput.disabled = !enabled;
+  composerSend.disabled = !enabled;
+  composerInput.placeholder = enabled ? "Type a message…" : "Connect to type a message";
+  if (!enabled) composerInput.value = "";
+}
+
+composer.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = composerInput.value.trim();
+  if (!text || !dc || dc.readyState !== "open") return;
+  dc.send(
+    JSON.stringify({
+      type: "conversation.item.create",
+      item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    })
+  );
+  addUserMessage(text);
+  bumpTurns();
+  scrollTranscriptToBottom();
+  composerInput.value = "";
+  requestResponse();
 });
 
 micBtn.addEventListener("click", () => {

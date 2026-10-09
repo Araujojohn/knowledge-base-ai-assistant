@@ -917,6 +917,33 @@
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid var(--edge);
   }
+  .composer {
+    flex: none;
+    display: flex;
+    gap: 10px;
+    padding: 10px 20px 0;
+    background: var(--sky-1);
+    border-top: 1px solid var(--edge);
+  }
+  .composer + .dock { border-top: none; }
+  .composer-input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-family: var(--font-primary);
+    font-size: 13.5px;
+    outline: none;
+    transition: border-color 0.18s ease;
+  }
+  .composer-input::placeholder { color: var(--text-muted); }
+  .composer-input:focus { border-color: var(--accent); }
+  .composer-input:disabled { opacity: 0.45; cursor: not-allowed; }
+
   .dock-hint {
     margin-left: auto;
     font-size: 11.5px;
@@ -1147,6 +1174,7 @@
     .kv { flex-direction: column; gap: 3px; }
     .kv dt { width: auto; }
 
+    .composer { padding: 10px 14px 0; }
     .dock { gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
     .dock-hint { display: none; }
     .orb-field { width: 40px; height: 40px; }
@@ -1333,6 +1361,13 @@
           </div>
         </section>
       </div>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <input class="composer-input" id="composer-input" type="text" placeholder="Connect to type a message" aria-label="Type a message" disabled>
+        <button class="icon-btn" id="composer-send" type="submit" aria-label="Send message" title="Send message" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </form>
 
       <div class="dock">
         <div class="orb-field" id="ai-orb" aria-hidden="true">

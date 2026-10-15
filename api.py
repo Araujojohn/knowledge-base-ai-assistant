@@ -14,6 +14,7 @@ import uvicorn
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from pydantic import BaseModel
 import avisa
+import sentinel_erros
 import asyncio
 import os
 from dotenv import load_dotenv
@@ -23,6 +24,7 @@ from graph import send_message_to_ai
 import json
 
 load_dotenv()
+sentinel_erros.install()
 
 app = FastAPI()
 security = HTTPBasic()

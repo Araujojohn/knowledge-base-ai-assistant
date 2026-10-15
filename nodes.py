@@ -6,7 +6,7 @@ from tools import tools
 import os
 import time
 import asyncio
-import traceback
+import logging
 from dotenv import load_dotenv
 import prompts
 import psycopg
@@ -81,9 +81,9 @@ async def agent_node(state: AgentState):
     model = await check_if_model_changed()
     try:
         response = await model.ainvoke(messages)
-    except Exception as error:
-        print(f"agent_node model.ainvoke failed: {error!r}")
-        traceback.print_exc()
+    except Exception:
+        # log de ERROR vai pro Sentinel (sentinel_erros.py); o print daqui só ficava no container
+        logging.getLogger(__name__).exception("agent_node model.ainvoke failed")
         response = AIMessage(
             content="Sorry, I hit an internal error while processing your request. Please try again."
         )

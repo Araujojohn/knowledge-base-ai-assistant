@@ -1,3 +1,4 @@
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -66,12 +67,8 @@ async def send_message_to_ai(message: str, thread_id):
                         if msg.usage_metadata:
                             yield {"type": "metadata", "content": msg.usage_metadata, "model": msg.response_metadata.get("model_name")}                      
     except GraphRecursionError:
-        print(
-            {
-                "type": "error",
-                "content": "Reached the retry limit. Want to try a different angle?\n",
-            }
-        )
+        # warning, not error: the user already gets the message below; not a service failure
+        logging.getLogger(__name__).warning("agent hit the graph recursion limit")
         yield {
             "type": "error",
             "content": "Reached the retry limit. Want to try a different angle?",

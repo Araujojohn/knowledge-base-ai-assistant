@@ -136,7 +136,7 @@
     pointer-events: none;
     z-index: -1;
     border-radius: 50%;
-    filter: blur(50px);
+    /* sem filter: blur — o radial já é suave; com blur a GPU refazia o desfoque a cada quadro (padrão de todos os fronts, 18/10) */
     opacity: .5;
     will-change: transform;
   }
@@ -157,18 +157,18 @@
   }
   @keyframes aurora1 {
     0%   { transform: translate(0,0) scale(1); }
-    50%  { transform: translate(-1.2vw,1.6vh) scale(1.06); }
-    100% { transform: translate(0.8vw,0.8vh) scale(.97); }
+    50%  { transform: translate(-5vw, 8vh) scale(1.08); }
+    100% { transform: translate(3vw, 4vh) scale(0.95); }
   }
   @keyframes aurora2 {
     0%   { transform: translate(0,0) scale(1); }
-    50%  { transform: translate(1.4vw,-1.4vh) scale(1.07); }
-    100% { transform: translate(-1vw,-0.8vh) scale(.98); }
+    50%  { transform: translate(6vw, -6vh) scale(1.1); }
+    100% { transform: translate(-4vw, -3vh) scale(0.96); }
   }
   @keyframes aurora3 {
     0%   { transform: translate(0,0) scale(1); opacity: .8; }
-    50%  { transform: translate(1vw,1.2vh) scale(1.09); opacity: 1; }
-    100% { transform: translate(-0.8vw,-1vh) scale(.94); opacity: .7; }
+    50%  { transform: translate(4vw, 5vh) scale(1.12); opacity: 1; }
+    100% { transform: translate(-3vw, -4vh) scale(0.92); opacity: .7; }
   }
 
   #constellation {

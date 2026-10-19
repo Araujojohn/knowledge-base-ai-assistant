@@ -14,6 +14,7 @@ mudou aqui, copiar pros outros.
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import queue
@@ -26,6 +27,12 @@ import httpx
 _URL = "https://n8n.artace.app/webhook/sentinel/service-error"
 _THROTTLE_SECONDS = 600
 _SERVICE = "personal-agent"
+_ACCESS_LOG = "app.access_logs"  # logger do Aegra que escreve a linha de cada request
+# Cada request roda na sua task (contexto próprio): guarda quando a exceção dela foi enviada.
+# Hora, não sim/não: a task herda o contexto de quem a criou, e uma exceção antiga do
+# processo não pode calar a linha 500 de toda request depois dela.
+_excecao_na_request: contextvars.ContextVar[float] = contextvars.ContextVar("sentinel_excecao", default=float("-inf"))
+_MESMA_REQUEST_SECONDS = 5  # a exceção e a linha 500 da mesma request saem com ms de diferença
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +82,19 @@ class SentinelHandler(logging.Handler):
         if record.name == __name__:
             return  # falha do próprio envio não vira outro envio
         exc = record.exc_info[1] if record.exc_info else None
+        # Uma rota que estoura loga a mesma exceção 3x: `app.app_logs`, a linha 500 do
+        # `app.access_logs` e o `uvicorn.error`. Vira 1 incidente: a exceção vai uma vez só,
+        # e a linha 500 só vai quando nada da request foi enviado (HTTPException(500) sem log).
+        if exc is not None:
+            if getattr(exc, "_sentinel_enviada", False):
+                return
+            try:
+                exc._sentinel_enviada = True
+            except AttributeError:
+                pass  # exceção sem __dict__: cai na trava de repetição
+            _excecao_na_request.set(time.monotonic())
+        elif record.name == _ACCESS_LOG and time.monotonic() - _excecao_na_request.get() < _MESMA_REQUEST_SECONDS:
+            return
         self.sender.submit(
             (record.name, record.funcName, str(record.msg)),
             f"{record.name}:{record.funcName}", exc, record.getMessage(),

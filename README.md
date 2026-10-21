@@ -267,7 +267,17 @@ A few choices that weren't obvious, and why I made them:
 | Testing | pytest, `pytest-asyncio` |
 | Delivery | WhatsApp via AVISA API · browser voice widget (OpenAI Realtime API over WebRTC) |
 | Orchestration | n8n (routing the WhatsApp webhook) |
-| Deploy | Docker + CapRover, GitHub Actions CI |
+| Deploy | Docker + CapRover, GitHub Actions CI · second deployment on AWS (below) |
+
+### AWS deployment
+
+The same image also runs on AWS, as a second deployment alongside the CapRover one:
+
+- **ECS on Fargate** runs the container; the image lives in **ECR**.
+- An **Application Load Balancer** fronts it over HTTPS and health-checks `/health`.
+- **RDS for PostgreSQL** (with `pgvector`) holds the search index. It has no public access: its security group only accepts port 5432 from the ECS task's security group.
+- The app connects with a dedicated, least-privilege role that can use its own schema but doesn't own the database.
+- Logs go to **CloudWatch**. The same GitHub webhook that keeps the CapRover index fresh also triggers `/ragsync` here.
 
 ## How to Run
 

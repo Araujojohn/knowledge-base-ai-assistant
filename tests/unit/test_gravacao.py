@@ -30,7 +30,8 @@ def transporte(monkeypatch, tmp_path):
     monkeypatch.setattr(gravacao, "_original_async", falso_async)
     monkeypatch.setattr(gravacao, "GRAVACOES", tmp_path)
     monkeypatch.setattr(gravacao, "conta", defaultdict(lambda: {"cheio": 0.0, "gasto": 0.0, "chamadas": 0,
-                                                                  "gravadas": 0, "segundos": 0.0, "modelos": []}))
+                                                                  "gravadas": 0, "segundos": 0.0, "modelos": [],
+                                                                  "erros": []}))
     monkeypatch.setattr(gravacao, "_vezes", defaultdict(int))
     monkeypatch.setattr(gravacao, "teste_atual", "tests/evals/comportamento/test_x.py::test_y")
     return chegaram
@@ -118,6 +119,7 @@ def test_modo_gratis_nao_paga_pedido_novo(transporte, monkeypatch):
         pede({"messages": ["pedido novo"]})
 
     assert len(transporte) == 1
+    assert gravacao.conta[gravacao.teste_atual]["erros"]  # o agente engole a exceção; o eval não pode passar
 
 
 def test_renova_paga_mesmo_com_gravacao(transporte, monkeypatch):
@@ -136,6 +138,18 @@ def test_resposta_de_erro_nao_fica_gravada(transporte, monkeypatch):
     pede({"messages": ["oi"]})
 
     assert not list(gravacao.GRAVACOES.glob("*.json"))
+    assert gravacao.conta[gravacao.teste_atual]["erros"] == ["api.anthropic.com respondeu 529"]
+
+
+def test_erro_de_rede_fica_na_conta_do_caso(transporte, monkeypatch):
+    def cai(self, request):
+        raise httpx.ConnectError("sem rede", request=request)
+    monkeypatch.setattr(gravacao, "_original", cai)
+
+    with pytest.raises(httpx.ConnectError):
+        pede({"messages": ["oi"]})
+
+    assert gravacao.conta[gravacao.teste_atual]["erros"]
 
 
 @pytest.mark.parametrize("resposta, usd, modelo", [

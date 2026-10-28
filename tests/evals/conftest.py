@@ -31,6 +31,15 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pula)
 
 
+@pytest.fixture(autouse=True)
+def sem_erro_da_ia():
+    """O agent_node engole a exceção do modelo e responde a frase de fallback, que passa em todo caso que confere
+    "não deu um ID". Erro da IA durante o caso (sem crédito, pedido novo no modo grátis) reprova o caso."""
+    yield
+    erros = gravacao.conta[gravacao.teste_atual]["erros"]
+    assert not erros, f"a IA falhou durante o caso, o resultado não vale: {erros}"
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
     gravacao.teste_atual = item.nodeid

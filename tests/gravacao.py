@@ -11,12 +11,15 @@ modelo já deu, de graça; pedido que mudou (prompt, ferramenta, modelo, conteú
 Não há relógio a fixar: nenhum prompt leva hora, data ou sorteio (prompts.py) e o thread_id não vai no pedido.
 
 Fica em volta do transporte do httpx porque os 4 SDKs (anthropic, openai, google-genai, cohere) passam por ele.
+Erro da IA (pedido novo no modo grátis, 4xx/5xx, rede) fica em conta[teste]["erros"] e reprova o eval mesmo quando o
+agente engole a exceção e devolve a frase de fallback (tests/evals/conftest.py).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import time
@@ -24,6 +27,12 @@ from collections import defaultdict
 from pathlib import Path
 
 import httpx
+
+# O google-genai troca o httpx pelo aiohttp ou pelo httpx2 quando estão instalados: a chamada do Gemini passaria por
+# fora daqui, sem gravação e sem a trava do CI
+_POR_FORA = [p for p in ("aiohttp", "httpx2") if importlib.util.find_spec(p)]
+if _POR_FORA:
+    raise RuntimeError(f"{_POR_FORA} instalado: o Gemini sairia por fora da gravação (tests/gravacao.py)")
 
 HOSTS_PAGOS = ("api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com",
                "api.cohere.com", "api.cohere.ai")
@@ -42,7 +51,7 @@ RERANK_USD_POR_BUSCA = 0.002  # Cohere rerank-v3.5: US$ 2 por 1.000 buscas
 
 teste_atual = ""
 conta: dict[str, dict] = defaultdict(
-    lambda: {"cheio": 0.0, "gasto": 0.0, "chamadas": 0, "gravadas": 0, "segundos": 0.0, "modelos": []})
+    lambda: {"cheio": 0.0, "gasto": 0.0, "chamadas": 0, "gravadas": 0, "segundos": 0.0, "modelos": [], "erros": []})
 _vezes: dict[tuple[str, str], int] = defaultdict(int)
 
 
@@ -92,6 +101,7 @@ def _gravada(request: httpx.Request) -> tuple[Path, dict | None]:
     if arquivo.exists() and _modo() != "renova":
         return arquivo, json.loads(arquivo.read_text(encoding="utf-8"))
     if _modo() == "gratis":
+        conta[teste_atual]["erros"].append(f"{request.url.host}: pedido novo sem gravação no modo grátis")
         raise RuntimeError(f"modo grátis: pedido novo pra {request.url.host} sem resposta gravada ({teste_atual})")
     return arquivo, None
 
@@ -114,6 +124,8 @@ def _servir(request: httpx.Request, g: dict, gravada: bool) -> httpx.Response:
     c["chamadas"] += 1
     c["cheio"] += usd
     c["segundos"] += g["segundos"]
+    if g["status"] >= 400:
+        c["erros"].append(f"{request.url.host} respondeu {g['status']}")
     if gravada:
         c["gravadas"] += 1
     else:
@@ -137,7 +149,11 @@ def _gravando(self, request: httpx.Request) -> httpx.Response:
     gravada = g is not None
     if g is None:
         inicio = time.perf_counter()
-        resposta = _original(self, request)
+        try:
+            resposta = _original(self, request)
+        except httpx.HTTPError as erro:
+            conta[teste_atual]["erros"].append(f"{request.url.host}: {erro!r}")
+            raise
         g = _guardar(arquivo, request, resposta, resposta.read(), time.perf_counter() - inicio)
     return _servir(request, g, gravada)
 
@@ -152,7 +168,11 @@ async def _gravando_async(self, request: httpx.Request) -> httpx.Response:
     gravada = g is not None
     if g is None:
         inicio = time.perf_counter()
-        resposta = await _original_async(self, request)
+        try:
+            resposta = await _original_async(self, request)
+        except httpx.HTTPError as erro:
+            conta[teste_atual]["erros"].append(f"{request.url.host}: {erro!r}")
+            raise
         g = _guardar(arquivo, request, resposta, await resposta.aread(), time.perf_counter() - inicio)
     return _servir(request, g, gravada)
 

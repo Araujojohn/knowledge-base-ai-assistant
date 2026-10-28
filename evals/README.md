@@ -38,14 +38,18 @@ Twenty questions is a good size to aim for. Ten is already useful.
 **3. Run it.**
 
 ```bash
-python -m evals.run_evals
+python scripts/evals.py desempenho           # plan and cost estimate, runs nothing
+python scripts/evals.py desempenho --rodar   # run it
 ```
 
-Run it from the repo root — the harness imports `graph`, so the root has to be
-on `sys.path`. It needs the same environment variables the app needs (Postgres,
-OpenAI, Cohere, GitHub), plus `OPENAI_API_TOKEN` for the judge.
+Run it from the repo root. It needs the same environment variables the app
+needs (Postgres, OpenAI, Cohere, GitHub), plus `OPENAI_API_TOKEN` for the judge.
+`pytest` on its own skips every eval: the script is the only way in, because it
+replays recorded answers for free when the request did not change, and stops at
+a daily budget.
 
-A report lands in `evals/runs/`, named with the date and time.
+The script prints accuracy, cost per run, model seconds per question and fact
+coverage. The full report lands in `tests/evals/runs/`, named with the date and time.
 
 ## Writing questions that are worth asking
 
@@ -69,30 +73,18 @@ suite catches it.
 
 ## Reading the report
 
-Top level:
-
 | Field | Meaning |
 |---|---|
-| `score` | percentage of questions judged correct |
-| `total_questions` / `correct_aswers` | the raw counts behind the score |
-| `fact_coverage` | percentage of the facts in your references that the answers actually carried |
-| `total_facts_extracted` / `total_facts_covered` | the raw counts behind that |
-| `model` | the agent model versions that actually answered |
-| `total_latency` / `avg_latency_per_question` | how long it took |
-| `total_input_tokens` / `total_output_tokens` | what it cost |
-| `breakdown_per_question` | one entry per question |
+| `passaram` / `falharam` | the questions judged correct and wrong; the score is their ratio |
+| `respostas` | one entry per question: the answer, the tools it called, tokens, `correct`, `facts_extracted`, `facts_covered`, `reason` and the judge model |
+| `conta` | per question: full cost, what was actually spent (recorded answers cost nothing), model seconds and the model versions that answered |
 
-Each entry in the breakdown carries the question and your expected answer, the
-answer the agent produced, `correct` (the verdict), `facts_extracted` and
-`facts_covered` for that question, `eval` (why the judge decided what it did),
-plus the model, tokens and latency.
-
-Start from the failures and read `eval` first. It names the central point the
+Start from the failures and read `reason` first. It names the central point the
 judge identified, so you can see whether it read the question the way you meant
 it before you go blaming the agent.
 
-**Two numbers, two jobs.** `score` answers "did the agent answer correctly" and
-is the one to quote. `fact_coverage` answers "how much of what I wrote down did
+**Two numbers, two jobs.** The score answers "did the agent answer correctly" and
+is the one to quote. Fact coverage answers "how much of what I wrote down did
 it actually carry", and it moves in smaller steps because it counts facts rather
 than questions — twenty questions holding eighty facts give it four times the
 resolution. Use it to notice changes the verdict is too coarse to show. A
@@ -101,16 +93,17 @@ most of the detail behind.
 
 ## How it works
 
-For each question in the set:
+Each question is one pytest case in `tests/evals/desempenho/test_golden_set.py`:
 
-1. `run_llm` sends the question through `send_message_to_ai` with a random
-   thread id, so questions don't leak into each other's memory.
-2. It reads the final answer off the stream, along with the tokens spent and
-   the model version that produced it.
-3. `run_judge` sends the question, your expected answer and the agent's answer
-   to the judge, which returns `{correct, reason}`.
+1. It sends the question through `send_message_to_ai` with its own thread id,
+   so questions don't leak into each other's memory.
+2. It reads the final answer, the tools called and the tokens off the stream.
+3. `judge` sends the question, your expected answer and the agent's answer
+   to the judge, which returns `{correct, facts_extracted, facts_covered, reason}`.
 
-The results are aggregated and written to `evals/runs/`.
+Every model, embedding, rerank and judge call goes through `tests/gravacao.py`,
+which records the answer under the exact request. Run it again without changing
+the prompt, the tools or the model and it costs nothing.
 
 ## The judge
 
@@ -130,8 +123,8 @@ before you go blaming the agent.
 **Check the judge before you trust it.** Label a run yourself — twenty answers,
 twenty minutes — and compare. If it disagrees with you often, the score is
 measuring the judge, not the agent, and no amount of tuning the agent will move
-it. The rubric lives in `judger_prompt` and the model in `judger_model`, both at
-the top of `run_evals.py`, and the model goes into every report: a score depends
+it. The rubric lives in `JUDGE_PROMPT` and the model in `JUDGE_MODEL`, both at
+the top of `test_golden_set.py`, and the model goes into every report: a score depends
 on who graded it as much as on who answered.
 
 In the same pass the judge counts how many facts your reference states and how
@@ -145,7 +138,7 @@ your set, list the required facts per question instead of writing prose.
 
 ## Your data stays yours
 
-`evals/v1_golden_set.json` and `evals/runs/` are both in `.gitignore`.
+`evals/v1_golden_set.json`, `tests/evals/runs/` and `tests/evals/gravacoes/` are all in `.gitignore`.
 
 A question set describes the contents of a private knowledge base, and a report
 embeds every answer the agent produced — which is that knowledge base, quoted

@@ -7,10 +7,13 @@ from tools import search
 
 
 @pytest.mark.asyncio
-async def test_rag_pipeline_and_search_tool_chunk_retrieval(test_db, monkeypatch):
+async def test_rag_pipeline_and_search_tool_chunk_retrieval(test_db, monkeypatch, record_property):
     """
-    Integration test: run the whole RAG pipeline against an empty TEST database,
+    Behaviour eval: run the whole RAG pipeline against an empty TEST database,
     then check that the agent's search tool retrieves the right chunk back.
+    Real PostgreSQL, OpenAI embeddings and Cohere rerank; only GitHub is stubbed.
+    Cost: ~US$ 0.002 (one rerank + two tiny embeddings) the first time; after that the
+    recorded answers replay it for free (tests/gravacao.py). Runs only via scripts/evals.py.
     """
 
     # GitHub stub: returns one file in the shape the pipeline expects.
@@ -59,4 +62,6 @@ async def test_rag_pipeline_and_search_tool_chunk_retrieval(test_db, monkeypatch
     )
 
     # 3. call the search tool and check the secret keyword came back in the chunks
-    assert any("abacaxi-quantico" in chunk[1] for chunk in search_tool_result)
+    positions = [i for i, chunk in enumerate(search_tool_result) if "abacaxi-quantico" in chunk[1]]
+    record_property("position_of_the_right_chunk", positions[0] if positions else None)
+    assert positions

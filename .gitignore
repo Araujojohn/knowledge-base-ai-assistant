@@ -15,3 +15,9 @@ readme
 # IDs, personal decisions). The harness is public; the data never is.
 evals/runs/
 evals/v1_golden_set.json
+# Eval recordings and run reports quote the vault too. The proof log
+# (tests/evals/registro.jsonl) holds only test ids and hashes: it is committed.
+tests/evals/gravacoes/
+tests/evals/runs/
+# Deploy gate: only scripts/evals.py portao writes it
+tests/.portao.json

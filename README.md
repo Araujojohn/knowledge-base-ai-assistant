@@ -227,8 +227,9 @@ answer.
 ├── state.py         # the graph's state schema
 ├── openai_realtime.py  # mints ephemeral Realtime API sessions for the widget
 ├── mnemosyne/       # the voice widget (browser side)
-├── tests/           # pytest, including one real integration test
-└── evals/           # golden-set evaluation harness (see evals/README.md)
+├── tests/           # unit/ (free) · evals/comportamento/ (pass or fail, gates deploy) · evals/desempenho/ (golden set)
+├── scripts/evals.py # the only way evals run: recorded answers, proof per case, daily budget, deploy gate
+└── evals/           # the golden-set data and how to write it (see evals/README.md)
 ```
 
 ## Engineering Decisions
@@ -312,8 +313,9 @@ Changing it takes effect within five minutes, without a deploy.
 
 ```bash
 uvicorn api:app --reload    # start the API
-pytest tests/ -v             # run the test suite
-python -m evals.run_evals    # run the golden-set evaluation
+pytest tests/ -v             # free test suite: no paid API call can run here
+python scripts/evals.py afetados --rodar        # behaviour evals not yet proven on this code and model
+python scripts/evals.py desempenho --rodar      # the golden-set evaluation (accuracy, cost, latency)
 ```
 
 ## Endpoints

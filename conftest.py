@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from rag import db_init
 import psycopg
 
+# Every paid call (model, embedding, rerank, judge) goes through this module: outside scripts/evals.py it raises,
+# inside it is recorded and replayed (tests/gravacao.py)
+from tests import gravacao  # noqa: F401
+
 
 @pytest.fixture
 def test_db(monkeypatch):

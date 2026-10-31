@@ -26,7 +26,7 @@ import json
 load_dotenv()
 sentinel_erros.install()
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 security = HTTPBasic()
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter

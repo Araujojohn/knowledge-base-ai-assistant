@@ -10,7 +10,7 @@ A personal AI agent that remembers, retrieves, and updates information across a 
 
 **Solution:** A personal AI with long-term memory, fast hybrid retrieval, and direct read/write access to a GitHub knowledge base.
 
-**Result:** Production deployment · 120+ indexed files · 430+ searchable chunks · measured against a hand-written evaluation set · WhatsApp and realtime voice interfaces.
+**Result:** In production on WhatsApp and realtime voice. **90% accuracy (18/20)** on 20 hand-written questions that a general model cannot answer, graded by a validated LLM judge; 120+ indexed files, 430+ searchable chunks. Two models compared on the same set ([details](#evaluation)): the production one costs $0.06 per run, the larger one $0.94.
 
 ## The Problem
 

@@ -8,6 +8,7 @@ import requests
 import psycopg
 import json
 import cohere
+from urllib.parse import quote
 
 load_dotenv()
 client = httpx.AsyncClient()
@@ -53,6 +54,47 @@ def get_db_connection():
     )
 
 
+# What the agent may touch inside the knowledge base repo. Everything else
+# (.claude/, .github/, scripts) is code that runs on the owner's machine or in CI,
+# and the path below comes from the model, which a prompt injection can steer.
+READABLE = ["CLAUDE.md", "Base de conhecimento", "projetos", "memory"]
+WRITABLE = ["Base de conhecimento"]
+
+
+def safe_path(path: str, allowed_folders: list[str]) -> str:
+    """
+    Check a path chosen by the model and return it ready to go into the GitHub URL.
+    Raises ValueError when the path could leave the allowed folders.
+    """
+    # the model often ends a folder with "/" - same folder, so accept it
+    path = path.removesuffix("/")
+
+    # ".." walks up the URL and out of /contents/ (other routes, other repos);
+    # an empty segment covers "", a leading "/" and "a//b"
+    segments = path.split("/")
+    for segment in segments:
+        if segment in ("", ".", ".."):
+            raise ValueError(f"Path not allowed: {path!r}")
+
+    # "?" and "#" would end the URL path and start a query the model controls;
+    # "%" could hide any of the characters above (%2e%2e = ".."); "\" is not a
+    # separator on GitHub, so no real path here has one
+    for character in "?#%\\":
+        if character in path:
+            raise ValueError(f"Path not allowed: {path!r}")
+
+    # comparing whole segments, so "projetos-x" does not pass as "projetos"
+    inside_allowed_folder = False
+    for folder in allowed_folders:
+        if path == folder or path.startswith(folder + "/"):
+            inside_allowed_folder = True
+    if not inside_allowed_folder:
+        raise ValueError(f"Path not allowed: {path!r}. Allowed: {allowed_folders}")
+
+    # encode spaces and accents ourselves, so the URL sent is exactly the one checked
+    return quote(path, safe="/")
+
+
 @tool
 async def read(path: str) -> str:
     """
@@ -60,6 +102,7 @@ async def read(path: str) -> str:
     Use it only when you already know the file's exact path (e.g. it came from
     CLAUDE.md, from `search`, or the user named the file). Never guess a path.
     """
+    path = safe_path(path, READABLE)
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 
     headers = {
@@ -90,6 +133,7 @@ async def list_files(path: str = "") -> str:
     if path == "":
         url = f"https://api.github.com/repos/{owner}/{repo}/contents"
     else:
+        path = safe_path(path, READABLE)
         url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 
     headers = {
@@ -126,7 +170,12 @@ async def write(
     file in the knowledge base.
     Important: on an edit, the endpoint expects "content" to carry the whole file,
     not just the part that changed.
+    Only .md files inside "Base de conhecimento/" can be written.
     """
+    if not path.endswith(".md"):
+        raise ValueError(f"Path not allowed: {path!r}. Only .md files can be written.")
+    path = safe_path(path, WRITABLE)
+
     content_base64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
 
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"

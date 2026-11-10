@@ -8,6 +8,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIASGIMiddleware
 import secrets
 import hmac, hashlib
 import uvicorn
@@ -28,9 +29,14 @@ sentinel_erros.install()
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 security = HTTPBasic()
-limiter = Limiter(key_func=get_remote_address)
+# The routes behind a password take their limit from default_limits, applied by the
+# middleware BEFORE the auth check: a wrong password also counts, so nobody gets
+# unlimited guesses. (@limiter.limit only runs after the dependencies passed.)
+limiter = Limiter(key_func=get_remote_address, default_limits=["10/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# added before ProxyHeadersMiddleware so that one runs first and the limiter sees the real IP
+app.add_middleware(SlowAPIASGIMiddleware)
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="10.0.1.0/24")
 
 
@@ -47,7 +53,7 @@ class RealtimeQueryRequest(BaseModel):
 # -----Helpers-----
 def verify_page_auth(credentials: HTTPBasicCredentials = Depends(security)):
     correct_password = secrets.compare_digest(
-        credentials.password, os.getenv("FRONTEND_PASSWORD")
+        credentials.password.encode(), os.getenv("FRONTEND_PASSWORD").encode()
     )
     if not correct_password:
         raise HTTPException(
@@ -64,7 +70,11 @@ def verify_whatsapp_chat_token(x_chat_secret: str = Header()):
     can reach the agent. Nothing here is specific to whatever sends the message.
     """
 
-    if x_chat_secret != os.getenv("CHAT_API_SECRET"):
+    # compare_digest takes the same time wherever the first wrong character is, so the
+    # response time does not leak how much of the secret was right. Bytes, because it
+    # refuses a str with non-ASCII characters.
+    expected_secret = os.getenv("CHAT_API_SECRET")
+    if not hmac.compare_digest(x_chat_secret.encode(), expected_secret.encode()):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -83,7 +93,6 @@ async def health(request: Request):
 
 
 @app.post("/chat", dependencies=[Depends(verify_whatsapp_chat_token)])
-@limiter.limit("10/minute")
 async def chat(request: Request, message: ChatRequest):
     async for airesponse in send_message_to_ai(message.message, message.reply_to):
         if airesponse["type"] != "metadata":
@@ -115,7 +124,6 @@ async def ragsync(request: Request):
 
 
 @app.post("/realtime/query", dependencies=[Depends(verify_page_auth)])
-@limiter.limit("10/minute")
 async def realtime_query(request: Request, message: RealtimeQueryRequest):
     return StreamingResponse(
         stream_realtime_response(message.message, message.session_id),
@@ -124,7 +132,6 @@ async def realtime_query(request: Request, message: RealtimeQueryRequest):
 
 
 @app.post("/realtime/new_session", dependencies=[Depends(verify_page_auth)])
-@limiter.limit("10/minute")
 async def realtime_new_session(request: Request) -> str:
     """
     Creates OpenAI realtime api Session
@@ -136,12 +143,10 @@ async def realtime_new_session(request: Request) -> str:
 
 
 @app.get("/mnemosyne/app.js", dependencies=[Depends(verify_page_auth)])
-@limiter.limit("10/minute")
 async def widget_js(request: Request):
     return FileResponse("mnemosyne/app.js", media_type="application/javascript")
 
 
 @app.get("/mnemosyne", dependencies=[Depends(verify_page_auth)])
-@limiter.limit("10/minute")
 async def widget_page(request: Request):
     return FileResponse("mnemosyne/index.html")
